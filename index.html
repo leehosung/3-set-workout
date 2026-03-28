@@ -514,6 +514,10 @@ body {
       Google로 로그인
     </button>
     <span class="login-loading" id="loginLoading">로그인 중...</span>
+    <div style="display:flex; gap:12px; margin-top:16px;">
+      <a href="/privacy" style="font-size:11px; color:#c7c7cc; text-decoration:none;">개인정보처리방침</a>
+      <a href="/terms" style="font-size:11px; color:#c7c7cc; text-decoration:none;">서비스약관</a>
+    </div>
   </div>
 </div>
 
@@ -603,7 +607,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v2.5';
+const APP_VERSION = 'v2.6';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
