@@ -247,6 +247,17 @@ body {
 /* Bottom spacer */
 .spacer { height: 40px; }
 
+/* Version label */
+.version-label {
+  position: fixed;
+  bottom: 10px;
+  right: 14px;
+  font-size: 11px;
+  color: #c7c7cc;
+  pointer-events: none;
+  z-index: 5;
+}
+
 /* Progression target info */
 #progressionTargetInfo {
   background: #f9f9f9;
@@ -376,8 +387,12 @@ body {
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
+<!-- Version -->
+<div class="version-label" id="versionLabel"></div>
+
 <script>
 // ==================== Data ====================
+const APP_VERSION = 'v2.1';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -938,6 +953,7 @@ function showToast(msg) {
 }
 
 // ==================== Init ====================
+document.getElementById('versionLabel').textContent = APP_VERSION;
 renderWorkout();
 </script>
 </body>
