@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>3-Set Workout</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -282,6 +283,23 @@ body {
   color: #c7c7cc;
   pointer-events: none;
   z-index: 5;
+}
+
+/* Footer links */
+.footer-links {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  z-index: 5;
+  white-space: nowrap;
+}
+.footer-links a {
+  font-size: 10px;
+  color: #c7c7cc;
+  text-decoration: none;
 }
 
 /* Exercise name clickable */
@@ -569,6 +587,12 @@ body {
 <!-- Version -->
 <div class="version-label" id="versionLabel"></div>
 
+<!-- Footer links -->
+<div class="footer-links">
+  <a href="/privacy">개인정보처리방침</a>
+  <a href="/terms">서비스약관</a>
+</div>
+
 <script>
 // ==================== Supabase ====================
 const SUPABASE_URL = 'https://zxmssohedpzindaikcjn.supabase.co';
@@ -579,7 +603,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v2.4';
+const APP_VERSION = 'v2.5';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
