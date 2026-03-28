@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="#007aff"/>
+
+  <!-- Dumbbell bar -->
+  <rect x="156" y="236" width="200" height="40" rx="8" fill="white"/>
+
+  <!-- Left weight outer -->
+  <rect x="100" y="196" width="72" height="120" rx="14" fill="white"/>
+  <!-- Left weight inner cutout -->
+  <rect x="116" y="212" width="40" height="88" rx="8" fill="#007aff"/>
+
+  <!-- Right weight outer -->
+  <rect x="340" y="196" width="72" height="120" rx="14" fill="white"/>
+  <!-- Right weight inner cutout -->
+  <rect x="356" y="212" width="40" height="88" rx="8" fill="#007aff"/>
+
+  <!-- "3" label -->
+  <text x="256" y="390" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="72" font-weight="800" fill="white" text-anchor="middle">3-SET</text>
+</svg>
