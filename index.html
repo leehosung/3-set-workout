@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>3-Set Workout</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
@@ -41,6 +42,31 @@ body {
   cursor: pointer;
   padding: 4px 0;
   font-weight: 500;
+}
+
+/* User avatar */
+.user-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  overflow: hidden;
+  display: none;
+  padding: 0;
+  background: #007aff;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 /* Group tabs */
@@ -87,7 +113,6 @@ body {
   align-items: center;
   margin-bottom: 12px;
 }
-.exercise-name { font-size: 16px; font-weight: 600; }
 .exercise-weight { font-size: 13px; color: #8e8e93; font-weight: 500; }
 
 /* Sets */
@@ -261,6 +286,8 @@ body {
 
 /* Exercise name clickable */
 .exercise-name {
+  font-size: 16px;
+  font-weight: 600;
   cursor: pointer;
   text-decoration: underline;
   text-decoration-color: #c7c7cc;
@@ -333,6 +360,64 @@ body {
   line-height: 1.9;
 }
 
+/* Login overlay */
+.login-overlay {
+  display: flex;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #f2f2f7;
+  z-index: 200;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+}
+.login-overlay.hidden { display: none; }
+.login-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 0 32px;
+  width: 100%;
+  max-width: 340px;
+}
+.login-box h1 {
+  font-size: 28px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+.login-box p {
+  font-size: 15px;
+  color: #8e8e93;
+  text-align: center;
+  margin-bottom: 24px;
+}
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 15px 20px;
+  background: #fff;
+  border: 1.5px solid #e5e5ea;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1c1c1e;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.btn-google:active { transform: scale(0.98); }
+.btn-google svg { flex-shrink: 0; }
+.login-loading {
+  font-size: 14px;
+  color: #8e8e93;
+  margin-top: 8px;
+  display: none;
+}
+.login-loading.show { display: block; }
+
 /* Number input modal */
 .modal-overlay {
   display: none;
@@ -395,6 +480,25 @@ body {
 </head>
 <body>
 
+<!-- Login Overlay -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <h1>3-Set Workout</h1>
+    <p>운동 기록을 클라우드에 동기화하세요</p>
+    <button class="btn-google" onclick="signInWithGoogle()">
+      <svg width="20" height="20" viewBox="0 0 48 48">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+        <path fill="none" d="M0 0h48v48H0z"/>
+      </svg>
+      Google로 로그인
+    </button>
+    <span class="login-loading" id="loginLoading">로그인 중...</span>
+  </div>
+</div>
+
 <!-- Workout Screen -->
 <div class="workout-screen" id="workoutScreen">
   <div class="header">
@@ -402,6 +506,7 @@ body {
     <div class="header-right">
       <span class="date" id="todayDate"></span>
       <button class="btn-text" onclick="showEditScreen()">편집</button>
+      <button class="user-avatar" id="userAvatar" onclick="confirmSignOut()"></button>
     </div>
   </div>
   <div class="group-tabs" id="groupTabs"></div>
@@ -465,6 +570,14 @@ body {
 <div class="version-label" id="versionLabel"></div>
 
 <script>
+// ==================== Supabase ====================
+const SUPABASE_URL = 'https://zxmssohedpzindaikcjn.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_byM5Zieuqc99etPXODN-5g_H-wHF4Xr';
+const { createClient } = window.supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+
 // ==================== Data ====================
 const APP_VERSION = 'v2.3';
 const STORAGE_ROUTINE = '3sw-routine-v2';
@@ -523,11 +636,11 @@ function loadRoutine() {
     } catch(e) { console.error('loadRoutine error:', e); }
   }
   const r = { id: uid(), groups: DEFAULT_GROUPS };
-  saveRoutine(r);
+  saveRoutineLocal(r);
   return r;
 }
 
-function saveRoutine(r) {
+function saveRoutineLocal(r) {
   if (!storageAvailable) return;
   try {
     localStorage.setItem(STORAGE_ROUTINE, JSON.stringify(r));
@@ -535,6 +648,11 @@ function saveRoutine(r) {
     console.error('saveRoutine error:', e);
     showToast('저장 오류: ' + e.message);
   }
+}
+
+function saveRoutine(r) {
+  saveRoutineLocal(r);
+  syncRoutineToSupabase().catch(e => console.warn('Supabase routine sync error:', e));
 }
 
 function loadLogs() {
@@ -588,6 +706,7 @@ function getLog(groupId) {
     };
     logs.push(log);
     saveLogs(logs);
+    syncLogToSupabase(key, log).catch(e => console.warn('Supabase log sync error:', e));
   }
   return log;
 }
@@ -602,6 +721,7 @@ function updateLogEntry(groupId, exerciseId, setIndex, value) {
   if (!entry) return;
   entry.actuals[setIndex] = value;
   saveLogs(logs);
+  syncLogToSupabase(key, log).catch(e => console.warn('Supabase log sync error:', e));
 }
 
 function loadActiveGroup() {
@@ -614,6 +734,114 @@ function saveActiveGroup(groupId) {
   try {
     localStorage.setItem(STORAGE_ACTIVE_GROUP, groupId);
   } catch(e) {}
+}
+
+// ==================== Supabase Sync ====================
+async function syncRoutineToSupabase() {
+  if (!currentUser) return;
+  await sb.from('routines').upsert({
+    user_id: currentUser.id,
+    data: routine,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'user_id' });
+}
+
+async function syncLogToSupabase(logKey, logData) {
+  if (!currentUser) return;
+  await sb.from('workout_logs').upsert({
+    user_id: currentUser.id,
+    log_key: logKey,
+    data: logData,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'user_id,log_key' });
+}
+
+async function loadFromSupabase() {
+  if (!currentUser) return;
+  try {
+    const { data: rData, error: rErr } = await sb
+      .from('routines')
+      .select('data')
+      .eq('user_id', currentUser.id)
+      .maybeSingle();
+
+    if (!rErr && rData) {
+      routine = rData.data;
+      saveRoutineLocal(routine);
+    } else if (!rErr && !rData) {
+      await syncRoutineToSupabase();
+    }
+
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+
+    const { data: lData, error: lErr } = await sb
+      .from('workout_logs')
+      .select('log_key, data')
+      .eq('user_id', currentUser.id)
+      .gte('log_key', cutoffStr);
+
+    if (!lErr && lData && lData.length > 0) {
+      let allLogs = loadLogs();
+      lData.forEach(({ log_key, data: logData }) => {
+        const idx = allLogs.findIndex(l => l.id === log_key);
+        if (idx >= 0) allLogs[idx] = logData;
+        else allLogs.push(logData);
+      });
+      saveLogs(allLogs);
+    }
+
+    if (!routine.groups.find(g => g.id === activeGroupId)) {
+      activeGroupId = routine.groups[0]?.id;
+      saveActiveGroup(activeGroupId);
+    }
+  } catch(e) {
+    console.warn('Failed to load from Supabase:', e);
+  }
+}
+
+// ==================== Auth ====================
+async function signInWithGoogle() {
+  document.getElementById('loginLoading').classList.add('show');
+  await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin }
+  });
+}
+
+async function confirmSignOut() {
+  if (!confirm('로그아웃 하시겠습니까?')) return;
+  await sb.auth.signOut();
+}
+
+function updateUserAvatar() {
+  const btn = document.getElementById('userAvatar');
+  if (!currentUser) { btn.style.display = 'none'; return; }
+  const avatarUrl = currentUser.user_metadata?.avatar_url;
+  if (avatarUrl) {
+    btn.innerHTML = `<img src="${avatarUrl}" alt="avatar">`;
+  } else {
+    btn.textContent = (currentUser.email || 'U')[0].toUpperCase();
+  }
+  btn.style.display = 'flex';
+}
+
+async function handleSignIn(session) {
+  currentUser = session.user;
+  await loadFromSupabase();
+  routine = loadRoutine();
+  activeGroupId = loadActiveGroup() || routine.groups[0]?.id || 'g1';
+  document.getElementById('loginOverlay').classList.add('hidden');
+  updateUserAvatar();
+  renderWorkout();
+}
+
+function handleSignOut() {
+  currentUser = null;
+  document.getElementById('userAvatar').style.display = 'none';
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  document.getElementById('loginLoading').classList.remove('show');
 }
 
 // ==================== Cleanup old v1 data ====================
@@ -878,7 +1106,6 @@ function saveAndCloseEdit() {
   document.getElementById('editScreen').classList.remove('active');
   document.getElementById('workoutScreen').classList.remove('hidden');
 
-  // Ensure active group still exists
   if (!routine.groups.find(g => g.id === activeGroupId)) {
     activeGroupId = routine.groups[0]?.id || 'g1';
     saveActiveGroup(activeGroupId);
@@ -897,7 +1124,6 @@ function renderEditList() {
     section.className = 'edit-group-section';
     section.dataset.groupId = group.id;
 
-    // Group header
     const header = document.createElement('div');
     header.className = 'edit-group-header';
     header.innerHTML = `
@@ -912,7 +1138,6 @@ function renderEditList() {
     `;
     section.appendChild(header);
 
-    // Exercise cards within group
     group.exercises.forEach((ex, ei) => {
       const card = document.createElement('div');
       card.className = 'edit-card';
@@ -948,7 +1173,6 @@ function renderEditList() {
       section.appendChild(card);
     });
 
-    // Add exercise button per group
     const addBtn = document.createElement('button');
     addBtn.className = 'btn-add';
     addBtn.textContent = '+ 운동 추가';
@@ -958,7 +1182,6 @@ function renderEditList() {
     list.appendChild(section);
   });
 
-  // Add group button
   const addGroupBtn = document.createElement('button');
   addGroupBtn.className = 'btn-add';
   addGroupBtn.style.borderColor = '#007aff';
@@ -1077,7 +1300,14 @@ function showToast(msg) {
 
 // ==================== Init ====================
 document.getElementById('versionLabel').textContent = APP_VERSION;
-renderWorkout();
+
+sb.auth.onAuthStateChange(async (event, session) => {
+  if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+    await handleSignIn(session);
+  } else if (event === 'SIGNED_OUT' || (event === 'INITIAL_SESSION' && !session)) {
+    handleSignOut();
+  }
+});
 </script>
 </body>
 </html>
