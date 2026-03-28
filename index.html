@@ -251,7 +251,8 @@ body {
 .version-label {
   position: fixed;
   bottom: 10px;
-  right: max(14px, calc((100vw - 430px) / 2 + 14px));
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 11px;
   color: #c7c7cc;
   pointer-events: none;
@@ -392,7 +393,7 @@ body {
 
 <script>
 // ==================== Data ====================
-const APP_VERSION = 'v2.1';
+const APP_VERSION = 'v2.2';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
