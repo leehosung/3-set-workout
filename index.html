@@ -518,6 +518,7 @@ body {
       <a href="/privacy" style="font-size:11px; color:#c7c7cc; text-decoration:none;">개인정보처리방침</a>
       <a href="/terms" style="font-size:11px; color:#c7c7cc; text-decoration:none;">서비스약관</a>
     </div>
+    <span id="loginVersion" style="font-size:11px; color:#c7c7cc; margin-top:4px;"></span>
   </div>
 </div>
 
@@ -607,7 +608,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v2.6';
+const APP_VERSION = 'v2.7';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -1328,6 +1329,7 @@ function showToast(msg) {
 
 // ==================== Init ====================
 document.getElementById('versionLabel').textContent = APP_VERSION;
+document.getElementById('loginVersion').textContent = APP_VERSION;
 
 sb.auth.onAuthStateChange(async (event, session) => {
   if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
