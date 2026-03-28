@@ -259,6 +259,68 @@ body {
   z-index: 5;
 }
 
+/* Exercise name clickable */
+.exercise-name {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: #c7c7cc;
+  text-underline-offset: 3px;
+}
+
+/* History modal */
+.history-modal {
+  max-height: 75vh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 40px;
+}
+.history-list {
+  overflow-y: auto;
+  flex: 1;
+  margin: 0 -4px 16px;
+}
+.history-empty {
+  text-align: center;
+  color: #8e8e93;
+  padding: 24px 0;
+  font-size: 14px;
+}
+.history-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 4px;
+  border-bottom: 1px solid #e5e5ea;
+  gap: 10px;
+}
+.history-row:last-child { border-bottom: none; }
+.history-date {
+  font-size: 12px;
+  color: #8e8e93;
+  min-width: 72px;
+}
+.history-sets {
+  display: flex;
+  gap: 5px;
+  flex: 1;
+}
+.history-set {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 5px 2px 3px;
+  border-radius: 8px;
+  line-height: 1.3;
+}
+.history-set .h-target {
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.75;
+}
+.history-set.done { background: #34c759; color: #fff; }
+.history-set.partial { background: #ff9500; color: #fff; }
+.history-set.empty { background: #f2f2f7; color: #c7c7cc; }
+
 /* Progression target info */
 #progressionTargetInfo {
   background: #f9f9f9;
@@ -372,6 +434,17 @@ body {
   </div>
 </div>
 
+<!-- History Modal -->
+<div class="modal-overlay" id="historyOverlay" onclick="closeHistoryModal(event)">
+  <div class="modal history-modal">
+    <div class="modal-title" id="historyTitle"></div>
+    <div class="history-list" id="historyList"></div>
+    <div class="modal-buttons">
+      <button class="modal-btn cancel" onclick="closeHistoryModal()">닫기</button>
+    </div>
+  </div>
+</div>
+
 <!-- Progression Confirm Modal -->
 <div class="modal-overlay" id="progressionOverlay" onclick="closeProgressionModal(event)">
   <div class="modal">
@@ -393,7 +466,7 @@ body {
 
 <script>
 // ==================== Data ====================
-const APP_VERSION = 'v2.2';
+const APP_VERSION = 'v2.3';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -605,7 +678,7 @@ function renderWorkout() {
 
     card.innerHTML = `
       <div class="exercise-header">
-        <span class="exercise-name">${esc(entry.exerciseName)}</span>
+        <span class="exercise-name" data-exercise-id="${entry.exerciseId}">${esc(entry.exerciseName)}</span>
         <span class="exercise-weight">${esc(weightText)}${entry.unit === 'seconds' && !weightText ? '⏱ 초' : ''}</span>
       </div>
       <div class="sets">
@@ -688,6 +761,55 @@ function closeModal(event) {
 document.getElementById('modalInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') confirmModal();
 });
+
+// ==================== History ====================
+document.getElementById('exerciseList').addEventListener('click', (e) => {
+  const trigger = e.target.closest('.exercise-name[data-exercise-id]');
+  if (trigger) {
+    showHistory(trigger.dataset.exerciseId, trigger.textContent);
+  }
+});
+
+function showHistory(exerciseId, exerciseName) {
+  const logs = loadLogs();
+  const days = ['일','월','화','수','목','금','토'];
+
+  const entries = logs
+    .filter(l => l.groupId === activeGroupId)
+    .map(l => ({ date: l.date, entry: l.entries.find(e => e.exerciseId === exerciseId) }))
+    .filter(x => x.entry)
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  document.getElementById('historyTitle').textContent = exerciseName + ' 기록';
+
+  const list = document.getElementById('historyList');
+  if (entries.length === 0) {
+    list.innerHTML = '<div class="history-empty">기록이 없습니다</div>';
+  } else {
+    list.innerHTML = entries.map(({ date, entry }) => {
+      const us = entry.unit === 'seconds' ? '초' : '';
+      const d = new Date(date + 'T00:00:00');
+      const dateStr = `${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} (${days[d.getDay()]})`;
+      const sets = entry.targets.map((target, i) => {
+        const actual = entry.actuals[i];
+        if (actual === null) {
+          return `<div class="history-set empty">—<div class="h-target">/${target}${us}</div></div>`;
+        }
+        const cls = actual >= target ? 'done' : 'partial';
+        return `<div class="history-set ${cls}">${actual}${us}<div class="h-target">/${target}${us}</div></div>`;
+      }).join('');
+      return `<div class="history-row"><div class="history-date">${dateStr}</div><div class="history-sets">${sets}</div></div>`;
+    }).join('');
+  }
+
+  document.getElementById('historyOverlay').classList.add('active');
+}
+
+function closeHistoryModal(event) {
+  if (!event || event.target === document.getElementById('historyOverlay')) {
+    document.getElementById('historyOverlay').classList.remove('active');
+  }
+}
 
 // ==================== Progression ====================
 let progressionCallback = null;
