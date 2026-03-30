@@ -603,12 +603,19 @@ body {
 const SUPABASE_URL = 'https://zxmssohedpzindaikcjn.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_byM5Zieuqc99etPXODN-5g_H-wHF4Xr';
 const { createClient } = window.supabase;
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storageKey: '3sw-auth-session',
+  }
+});
 
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v2.9';
+const APP_VERSION = 'v3.0';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
