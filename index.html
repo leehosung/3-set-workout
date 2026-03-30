@@ -608,7 +608,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v2.8';
+const APP_VERSION = 'v2.9';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -736,23 +736,6 @@ function getLog(groupId) {
     logs.push(log);
     saveLogs(logs);
     syncLogToSupabase(key, log).catch(e => console.warn('Supabase log sync error:', e));
-  } else {
-    // 루틴이 수정된 경우 오늘 로그의 목표값을 동기화
-    const group = routine.groups.find(g => g.id === groupId);
-    if (group) {
-      let changed = false;
-      log.entries.forEach(entry => {
-        const ex = group.exercises.find(e => e.id === entry.exerciseId);
-        if (ex && JSON.stringify(entry.targets) !== JSON.stringify(ex.targets)) {
-          entry.targets = [...ex.targets];
-          changed = true;
-        }
-      });
-      if (changed) {
-        saveLogs(logs);
-        syncLogToSupabase(key, log).catch(e => console.warn('Supabase log sync error:', e));
-      }
-    }
   }
   return log;
 }
