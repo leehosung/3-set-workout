@@ -615,7 +615,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v3.0';
+const APP_VERSION = 'v3.1';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -1078,18 +1078,21 @@ function closeHistoryModal(event) {
 // ==================== Progression ====================
 let progressionCallback = null;
 
-function getNextTargets(targets) {
+function getNextTargets(targets, unit) {
   const [a, b, c] = targets;
-  if (a - b > 5) return [a, b + 1, c];
-  if (b - c > 5) return [a, b, c + 1];
-  return [a + 1, b, c];
+  const isSeconds = unit === 'seconds';
+  const gap = isSeconds ? 10 : 5;
+  const step = isSeconds ? 5 : 1;
+  if (a - b > gap) return [a, b + step, c];
+  if (b - c > gap) return [a, b, c + step];
+  return [a + step, b, c];
 }
 
 function checkAndShowProgression(entry) {
   const allDone = entry.actuals.every((v, i) => v !== null && v >= entry.targets[i]);
   if (!allDone) return;
 
-  const next = getNextTargets(entry.targets);
+  const next = getNextTargets(entry.targets, entry.unit);
   const us = entry.unit === 'seconds' ? '초' : '회';
 
   progressionCallback = () => {
