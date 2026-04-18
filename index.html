@@ -621,7 +621,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v3.5';
+const APP_VERSION = 'v3.6';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -778,6 +778,23 @@ function saveActiveGroup(groupId) {
   } catch(e) {}
 }
 
+function getDefaultGroupId() {
+  const logs = loadLogs();
+  if (!logs.length) return routine.groups[0]?.id || 'g1';
+
+  const latestDate = logs.reduce((max, l) => l.date > max ? l.date : max, '');
+  const latestLogs = logs.filter(l => l.date === latestDate);
+
+  // 가장 최근 날짜에 운동한 그룹 중 루틴 순서상 마지막 그룹 찾기
+  let latestGroupIdx = -1;
+  routine.groups.forEach((g, i) => {
+    if (latestLogs.some(l => l.groupId === g.id)) latestGroupIdx = i;
+  });
+
+  if (latestGroupIdx === -1) return routine.groups[0]?.id || 'g1';
+  return routine.groups[(latestGroupIdx + 1) % routine.groups.length].id;
+}
+
 // ==================== Supabase Sync ====================
 async function syncRoutineToSupabase() {
   if (!currentUser) return;
@@ -905,7 +922,8 @@ try {
 
 // ==================== State ====================
 let routine = loadRoutine();
-let activeGroupId = loadActiveGroup() || routine.groups[0]?.id || 'g1';
+let activeGroupId = getDefaultGroupId();
+
 let currentLog = null;
 let modalCallback = null;
 
