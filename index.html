@@ -621,7 +621,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v3.4';
+const APP_VERSION = 'v3.5';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -1085,21 +1085,24 @@ function closeHistoryModal(event) {
 // ==================== Progression ====================
 let progressionCallback = null;
 
-function getNextTargets(targets, unit) {
+function getNextTargets(targets, setGap, progressStep) {
   const [a, b, c] = targets;
-  const isSeconds = unit === 'seconds';
-  const gap = isSeconds ? 10 : 5;
-  const step = isSeconds ? 5 : 1;
-  if (a - b > gap) return [a, b + step, c];
-  if (b - c > gap) return [a, b, c + step];
-  return [a + step, b, c];
+  if (a - b > setGap) return [a, b + progressStep, c];
+  if (b - c > setGap) return [a, b, c + progressStep];
+  return [a + progressStep, b, c];
 }
 
 function checkAndShowProgression(entry) {
   const allDone = entry.actuals.every((v, i) => v !== null && v >= entry.targets[i]);
   if (!allDone) return;
 
-  const next = getNextTargets(entry.targets, entry.unit);
+  const group = routine.groups.find(g => g.id === activeGroupId);
+  const ex = group?.exercises.find(e => e.id === entry.exerciseId);
+  const isSeconds = entry.unit === 'seconds';
+  const setGap = ex?.setGap ?? (isSeconds ? 10 : 5);
+  const progressStep = ex?.progressStep ?? (isSeconds ? 5 : 1);
+
+  const next = getNextTargets(entry.targets, setGap, progressStep);
   const us = entry.unit === 'seconds' ? '초' : '회';
 
   progressionCallback = () => {
@@ -1215,6 +1218,15 @@ function renderEditList() {
             <input class="edit-input small edit-t3" type="number" inputmode="numeric" value="${ex.targets[2]}">
           </div>
         </div>
+        <div class="edit-row">
+          <label>진급</label>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <span style="font-size:12px; color:#8e8e93;">간격</span>
+            <input class="edit-input small edit-set-gap" type="number" inputmode="numeric" value="${ex.setGap ?? (ex.unit === 'seconds' ? 10 : 5)}">
+            <span style="font-size:12px; color:#8e8e93;">단위</span>
+            <input class="edit-input small edit-progress-step" type="number" inputmode="numeric" value="${ex.progressStep ?? (ex.unit === 'seconds' ? 5 : 1)}">
+          </div>
+        </div>
       `;
       section.appendChild(card);
     });
@@ -1264,6 +1276,8 @@ function syncAllEdits() {
       ex.targets[0] = parseInt(card.querySelector('.edit-t1').value) || 0;
       ex.targets[1] = parseInt(card.querySelector('.edit-t2').value) || 0;
       ex.targets[2] = parseInt(card.querySelector('.edit-t3').value) || 0;
+      ex.setGap = parseInt(card.querySelector('.edit-set-gap').value) || (ex.unit === 'seconds' ? 10 : 5);
+      ex.progressStep = parseInt(card.querySelector('.edit-progress-step').value) || (ex.unit === 'seconds' ? 5 : 1);
     });
   });
 }
