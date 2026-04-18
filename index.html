@@ -621,7 +621,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v3.6';
+const APP_VERSION = 'v3.7';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -845,8 +845,17 @@ async function loadFromSupabase() {
       let allLogs = loadLogs();
       lData.forEach(({ log_key, data: logData }) => {
         const idx = allLogs.findIndex(l => l.id === log_key);
-        if (idx >= 0) allLogs[idx] = logData;
-        else allLogs.push(logData);
+        if (idx >= 0) {
+          // 로컬과 Supabase 중 실제 기록(actuals)이 더 많은 쪽을 유지
+          const countActuals = (log) => log.entries.reduce(
+            (n, e) => n + e.actuals.filter(a => a !== null).length, 0
+          );
+          if (countActuals(logData) > countActuals(allLogs[idx])) {
+            allLogs[idx] = logData;
+          }
+        } else {
+          allLogs.push(logData);
+        }
       });
       saveLogs(allLogs);
     }
