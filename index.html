@@ -621,7 +621,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v3.8';
+const APP_VERSION = 'v3.9';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -1253,6 +1253,13 @@ function renderEditList() {
             <button class="btn-icon delete" onclick="deleteExInGroup(${gi}, ${ei})">✕</button>
           </div>
         </div>
+        ${routine.groups.length > 1 ? `
+        <div class="edit-row">
+          <label>그룹</label>
+          <select class="edit-input edit-move-group" onchange="moveExToGroup(${gi}, ${ei}, parseInt(this.value))">
+            ${routine.groups.map((g, i) => `<option value="${i}" ${i === gi ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}
+          </select>
+        </div>` : ''}
         <div class="edit-row">
           <label>무게</label>
           <input class="edit-input edit-weight" type="number" inputmode="decimal" value="${ex.weight !== null ? ex.weight : ''}" placeholder="없음" step="0.5">
@@ -1360,6 +1367,16 @@ function addGroup() {
   renderEditList();
   const list = document.getElementById('editList');
   list.lastElementChild.scrollIntoView({ behavior: 'smooth' });
+}
+
+function moveExToGroup(fromGi, ei, toGi) {
+  if (fromGi === toGi) return;
+  syncAllEdits();
+  const [ex] = routine.groups[fromGi].exercises.splice(ei, 1);
+  routine.groups[toGi].exercises.push(ex);
+  routine.groups[fromGi].exercises.forEach((e, i) => e.order = i);
+  routine.groups[toGi].exercises.forEach((e, i) => e.order = i);
+  renderEditList();
 }
 
 function moveExInGroup(gi, ei, direction) {
