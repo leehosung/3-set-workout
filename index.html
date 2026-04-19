@@ -195,6 +195,38 @@ body {
 }
 .btn-icon:disabled { opacity: 0.3; cursor: default; }
 .btn-icon.delete { color: #ff3b30; border-color: #ffcdd2; }
+.btn-icon.archive { color: #8e8e93; border-color: #e5e5ea; }
+
+/* Archived exercises section */
+.archived-section {
+  margin-top: 6px;
+  border-top: 1px dashed #e5e5ea;
+  padding-top: 8px;
+}
+.archived-label {
+  font-size: 11px;
+  color: #c7c7cc;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 4px 6px;
+}
+.archived-card {
+  background: #f9f9f9;
+  border-radius: 10px;
+  margin-bottom: 6px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.archived-card-name {
+  font-size: 14px;
+  color: #8e8e93;
+  flex: 1;
+  text-decoration: line-through;
+}
+.archived-card-actions { display: flex; gap: 6px; }
 
 .edit-row {
   display: flex;
@@ -621,7 +653,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v3.9';
+const APP_VERSION = 'v4.0';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -736,7 +768,7 @@ function getLog(groupId) {
       date: today,
       groupId: groupId,
       groupName: group.name,
-      entries: group.exercises.map(ex => ({
+      entries: group.exercises.filter(ex => !ex.archived).map(ex => ({
         exerciseId: ex.id,
         exerciseName: ex.name,
         weight: ex.weight,
@@ -754,7 +786,7 @@ function getLog(groupId) {
     const group = routine.groups.find(g => g.id === groupId);
     if (group) {
       let changed = false;
-      group.exercises.forEach(ex => {
+      group.exercises.filter(ex => !ex.archived).forEach(ex => {
         if (!log.entries.find(e => e.exerciseId === ex.id)) {
           log.entries.push({
             exerciseId: ex.id,
@@ -1238,19 +1270,24 @@ function renderEditList() {
     `;
     section.appendChild(header);
 
-    group.exercises.forEach((ex, ei) => {
+    const activeExercises = group.exercises.filter(ex => !ex.archived);
+    const archivedExercises = group.exercises.filter(ex => ex.archived);
+
+    activeExercises.forEach((ex, ei) => {
+      const realEi = group.exercises.indexOf(ex);
       const card = document.createElement('div');
       card.className = 'edit-card';
       card.dataset.id = ex.id;
       card.dataset.groupIdx = gi;
-      card.dataset.exIdx = ei;
+      card.dataset.exIdx = realEi;
       card.innerHTML = `
         <div class="edit-card-header">
           <input class="edit-input edit-name" value="${esc(ex.name)}" placeholder="운동 이름">
           <div class="edit-card-actions">
-            <button class="btn-icon" onclick="moveExInGroup(${gi}, ${ei}, -1)" ${ei === 0 ? 'disabled' : ''}>▲</button>
-            <button class="btn-icon" onclick="moveExInGroup(${gi}, ${ei}, 1)" ${ei === group.exercises.length - 1 ? 'disabled' : ''}>▼</button>
-            <button class="btn-icon delete" onclick="deleteExInGroup(${gi}, ${ei})">✕</button>
+            <button class="btn-icon" onclick="moveExInGroup(${gi}, ${realEi}, -1)" ${ei === 0 ? 'disabled' : ''}>▲</button>
+            <button class="btn-icon" onclick="moveExInGroup(${gi}, ${realEi}, 1)" ${ei === activeExercises.length - 1 ? 'disabled' : ''}>▼</button>
+            <button class="btn-icon archive" onclick="archiveExercise(${gi}, ${realEi})" title="보관">▣</button>
+            <button class="btn-icon delete" onclick="deleteExInGroup(${gi}, ${realEi})">✕</button>
           </div>
         </div>
         ${routine.groups.length > 1 ? `
@@ -1289,6 +1326,24 @@ function renderEditList() {
       section.appendChild(card);
     });
 
+    // 아카이브된 운동 섹션
+    if (archivedExercises.length > 0) {
+      const archSection = document.createElement('div');
+      archSection.className = 'archived-section';
+      archSection.innerHTML = `<div class="archived-label">보관된 운동</div>` +
+        archivedExercises.map(ex => {
+          const realEi = group.exercises.indexOf(ex);
+          return `<div class="archived-card">
+            <span class="archived-card-name">${esc(ex.name)}</span>
+            <div class="archived-card-actions">
+              <button class="btn-icon" onclick="restoreExercise(${gi}, ${realEi})">복원</button>
+              <button class="btn-icon delete" onclick="deleteExInGroup(${gi}, ${realEi})">✕</button>
+            </div>
+          </div>`;
+        }).join('');
+      section.appendChild(archSection);
+    }
+
     const addBtn = document.createElement('button');
     addBtn.className = 'btn-add';
     addBtn.textContent = '+ 운동 추가';
@@ -1322,9 +1377,10 @@ function syncAllEdits() {
     if (nameInput) group.name = nameInput.value.trim() || `그룹 ${gi+1}`;
 
     const cards = section.querySelectorAll('.edit-card');
-    cards.forEach((card, ei) => {
-      if (ei >= group.exercises.length) return;
-      const ex = group.exercises[ei];
+    cards.forEach((card) => {
+      const realEi = parseInt(card.dataset.exIdx);
+      if (isNaN(realEi) || realEi >= group.exercises.length) return;
+      const ex = group.exercises[realEi];
       ex.name = card.querySelector('.edit-name').value.trim() || '운동';
       const wv = card.querySelector('.edit-weight').value.trim();
       ex.weight = wv === '' ? null : parseFloat(wv);
@@ -1369,6 +1425,17 @@ function addGroup() {
   list.lastElementChild.scrollIntoView({ behavior: 'smooth' });
 }
 
+function archiveExercise(gi, ei) {
+  syncAllEdits();
+  routine.groups[gi].exercises[ei].archived = true;
+  renderEditList();
+}
+
+function restoreExercise(gi, ei) {
+  routine.groups[gi].exercises[ei].archived = false;
+  renderEditList();
+}
+
 function moveExToGroup(fromGi, ei, toGi) {
   if (fromGi === toGi) return;
   syncAllEdits();
@@ -1407,7 +1474,8 @@ function addExToGroup(gi) {
     weightUnit: 'kg',
     unit: 'reps',
     targets: [10, 10, 10],
-    order: routine.groups[gi].exercises.length
+    order: routine.groups[gi].exercises.length,
+    archived: false
   });
   renderEditList();
 }
