@@ -653,7 +653,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v4.0';
+const APP_VERSION = 'v4.1';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -1022,7 +1022,13 @@ function renderWorkout() {
 
   if (!currentLog) return;
 
+  const activeGroup = routine.groups.find(g => g.id === activeGroupId);
+  const archivedIds = new Set(
+    (activeGroup?.exercises || []).filter(e => e.archived).map(e => e.id)
+  );
+
   currentLog.entries.forEach(entry => {
+    if (archivedIds.has(entry.exerciseId)) return;
     const card = document.createElement('div');
     card.className = 'exercise';
 
@@ -1428,6 +1434,7 @@ function addGroup() {
 function archiveExercise(gi, ei) {
   syncAllEdits();
   routine.groups[gi].exercises[ei].archived = true;
+  saveRoutine(routine);
   renderEditList();
 }
 
