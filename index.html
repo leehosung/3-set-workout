@@ -8,6 +8,7 @@
 <title>3-Set Workout</title>
 <link rel="icon" type="image/svg+xml" href="/logo.svg">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="lib.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
@@ -653,7 +654,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v4.4';
+const APP_VERSION = 'v4.5';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -686,20 +687,7 @@ const DEFAULT_GROUPS = [
   }
 ];
 
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
-}
-
-function todayStr() {
-  const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-}
-
-function todayDisplay() {
-  const d = new Date();
-  const days = ['일','월','화','수','목','금','토'];
-  return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} (${days[d.getDay()]})`;
-}
+// uid / todayStr / todayDisplay / getNextTargets / findNextGroupId are in lib.js
 
 // ==================== Storage ====================
 function loadRoutine() {
@@ -837,20 +825,7 @@ function saveActiveGroup(groupId) {
 }
 
 function getDefaultGroupId() {
-  const logs = loadLogs();
-  if (!logs.length) return routine.groups[0]?.id || 'g1';
-
-  const latestDate = logs.reduce((max, l) => l.date > max ? l.date : max, '');
-  const latestLogs = logs.filter(l => l.date === latestDate);
-
-  // 가장 최근 날짜에 운동한 그룹 중 루틴 순서상 마지막 그룹 찾기
-  let latestGroupIdx = -1;
-  routine.groups.forEach((g, i) => {
-    if (latestLogs.some(l => l.groupId === g.id)) latestGroupIdx = i;
-  });
-
-  if (latestGroupIdx === -1) return routine.groups[0]?.id || 'g1';
-  return routine.groups[(latestGroupIdx + 1) % routine.groups.length].id;
+  return findNextGroupId(loadLogs(), routine.groups) || 'g1';
 }
 
 // ==================== Supabase Sync ====================
@@ -1188,12 +1163,7 @@ function closeHistoryModal(event) {
 // ==================== Progression ====================
 let progressionCallback = null;
 
-function getNextTargets(targets, setGap, progressStep) {
-  const [a, b, c] = targets;
-  if (a - b > setGap) return [a, b + progressStep, c];
-  if (b - c > setGap) return [a, b, c + progressStep];
-  return [a + progressStep, b, c];
-}
+// getNextTargets is defined in lib.js
 
 function checkAndShowProgression(entry) {
   const allDone = entry.actuals.every((v, i) => v !== null && v >= entry.targets[i]);
