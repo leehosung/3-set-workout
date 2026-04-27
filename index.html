@@ -653,7 +653,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v4.3';
+const APP_VERSION = 'v4.4';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -725,6 +725,7 @@ function saveRoutineLocal(r) {
 }
 
 function saveRoutine(r) {
+  r.updatedAt = Date.now();
   saveRoutineLocal(r);
   syncRoutineToSupabase().catch(e => console.warn('Supabase routine sync error:', e));
 }
@@ -882,8 +883,14 @@ async function loadFromSupabase() {
       .maybeSingle();
 
     if (!rErr && rData) {
-      routine = rData.data;
-      saveRoutineLocal(routine);
+      const localTs = routine.updatedAt || 0;
+      const remoteTs = (rData.data && rData.data.updatedAt) || 0;
+      if (remoteTs > localTs) {
+        routine = rData.data;
+        saveRoutineLocal(routine);
+      } else if (remoteTs < localTs) {
+        await syncRoutineToSupabase();
+      }
     } else if (!rErr && !rData) {
       await syncRoutineToSupabase();
     }
