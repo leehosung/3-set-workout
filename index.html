@@ -654,11 +654,16 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v4.5';
+const APP_VERSION = 'v4.6';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
 const MAX_LOG_DAYS = 365;
+const SUPABASE_LOG_DAYS = 30;
+const DEFAULT_SET_GAP_REPS = 5;
+const DEFAULT_SET_GAP_SECONDS = 10;
+const DEFAULT_PROGRESS_STEP_REPS = 1;
+const DEFAULT_PROGRESS_STEP_SECONDS = 5;
 
 const DEFAULT_GROUPS = [
   {
@@ -686,8 +691,6 @@ const DEFAULT_GROUPS = [
     ]
   }
 ];
-
-// uid / todayStr / todayDisplay / getNextTargets / findNextGroupId are in lib.js
 
 // ==================== Storage ====================
 function loadRoutine() {
@@ -723,12 +726,8 @@ function loadLogs() {
   try {
     const raw = localStorage.getItem(STORAGE_LOGS);
     if (raw) {
-      let logs = JSON.parse(raw);
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - MAX_LOG_DAYS);
-      const cutoffStr = cutoff.toISOString().split('T')[0];
-      logs = logs.filter(l => l.date >= cutoffStr);
-      return logs;
+      const cutoffStr = dateNDaysAgo(MAX_LOG_DAYS);
+      return JSON.parse(raw).filter(l => l.date >= cutoffStr);
     }
   } catch(e) { console.error('loadLogs error:', e); }
   return [];
@@ -744,55 +743,45 @@ function saveLogs(logs) {
   }
 }
 
+function createLogEntry(ex) {
+  return {
+    exerciseId: ex.id,
+    exerciseName: ex.name,
+    weight: ex.weight,
+    weightUnit: ex.weightUnit,
+    unit: ex.unit,
+    targets: [...ex.targets],
+    actuals: [null, null, null],
+  };
+}
+
 function getLog(groupId) {
   const logs = loadLogs();
-  const today = todayStr();
-  const key = today + ':' + groupId;
+  const key = logKey(groupId);
+  const group = routine.groups.find(g => g.id === groupId);
+  if (!group) return null;
+
   let log = logs.find(l => l.id === key);
   if (!log) {
-    const group = routine.groups.find(g => g.id === groupId);
-    if (!group) return null;
     log = {
       id: key,
-      date: today,
-      groupId: groupId,
+      date: todayStr(),
+      groupId,
       groupName: group.name,
-      entries: group.exercises.filter(ex => !ex.archived).map(ex => ({
-        exerciseId: ex.id,
-        exerciseName: ex.name,
-        weight: ex.weight,
-        weightUnit: ex.weightUnit,
-        unit: ex.unit,
-        targets: [...ex.targets],
-        actuals: [null, null, null]
-      }))
+      entries: group.exercises.filter(ex => !ex.archived).map(createLogEntry),
     };
     logs.push(log);
     saveLogs(logs);
     // 빈 로그는 Supabase에 동기화하지 않음 — 실제 기록 시점에 동기화
   } else {
-    // 루틴에 새로 추가된 운동을 오늘 로그에 반영
-    const group = routine.groups.find(g => g.id === groupId);
-    if (group) {
-      let changed = false;
-      group.exercises.filter(ex => !ex.archived).forEach(ex => {
-        if (!log.entries.find(e => e.exerciseId === ex.id)) {
-          log.entries.push({
-            exerciseId: ex.id,
-            exerciseName: ex.name,
-            weight: ex.weight,
-            weightUnit: ex.weightUnit,
-            unit: ex.unit,
-            targets: [...ex.targets],
-            actuals: [null, null, null]
-          });
-          changed = true;
-        }
-      });
-      if (changed) {
-        saveLogs(logs);
-        syncLogToSupabase(key, log).catch(e => console.warn('Supabase log sync error:', e));
-      }
+    const existingIds = new Set(log.entries.map(e => e.exerciseId));
+    const newEntries = group.exercises
+      .filter(ex => !ex.archived && !existingIds.has(ex.id))
+      .map(createLogEntry);
+    if (newEntries.length) {
+      log.entries.push(...newEntries);
+      saveLogs(logs);
+      syncLogToSupabase(key, log).catch(e => console.warn('Supabase log sync error:', e));
     }
   }
   return log;
@@ -800,8 +789,7 @@ function getLog(groupId) {
 
 function updateLogEntry(groupId, exerciseId, setIndex, value) {
   const logs = loadLogs();
-  const today = todayStr();
-  const key = today + ':' + groupId;
+  const key = logKey(groupId);
   const log = logs.find(l => l.id === key);
   if (!log) return;
   const entry = log.entries.find(e => e.exerciseId === exerciseId);
@@ -870,36 +858,27 @@ async function loadFromSupabase() {
       await syncRoutineToSupabase();
     }
 
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 30);
-    const cutoffStr = cutoff.toISOString().split('T')[0];
-
     const { data: lData, error: lErr } = await sb
       .from('workout_logs')
       .select('log_key, data')
       .eq('user_id', currentUser.id)
-      .gte('log_key', cutoffStr);
+      .gte('log_key', dateNDaysAgo(SUPABASE_LOG_DAYS));
 
     if (!lErr && lData && lData.length > 0) {
+      const countActuals = (log) =>
+        log.entries.reduce((n, e) => n + e.actuals.filter(a => a !== null).length, 0);
+
       let allLogs = loadLogs();
       lData.forEach(({ log_key, data: logData }) => {
         const idx = allLogs.findIndex(l => l.id === log_key);
-        if (idx >= 0) {
-          // updatedAt 타임스탬프가 있으면 최신 버전 유지, 없으면 actuals 수가 많은 쪽 유지
-          const localTs = allLogs[idx].updatedAt || 0;
-          const remoteTs = logData.updatedAt || 0;
-          if (remoteTs > localTs) {
-            allLogs[idx] = logData;
-          } else if (remoteTs === localTs) {
-            const countActuals = (log) => log.entries.reduce(
-              (n, e) => n + e.actuals.filter(a => a !== null).length, 0
-            );
-            if (countActuals(logData) > countActuals(allLogs[idx])) {
-              allLogs[idx] = logData;
-            }
-          }
-        } else {
-          allLogs.push(logData);
+        if (idx < 0) { allLogs.push(logData); return; }
+
+        const localTs = allLogs[idx].updatedAt || 0;
+        const remoteTs = logData.updatedAt || 0;
+        if (remoteTs > localTs) {
+          allLogs[idx] = logData;
+        } else if (remoteTs === localTs && countActuals(logData) > countActuals(allLogs[idx])) {
+          allLogs[idx] = logData;
         }
       });
       saveLogs(allLogs);
@@ -997,7 +976,6 @@ function renderGroupTabs() {
 function selectGroup(groupId) {
   activeGroupId = groupId;
   saveActiveGroup(groupId);
-  renderGroupTabs();
   renderWorkout();
 }
 
@@ -1021,8 +999,8 @@ function renderWorkout() {
     const card = document.createElement('div');
     card.className = 'exercise';
 
+    const us = getUnitSuffix(entry.unit);
     const weightText = entry.weight !== null ? `${entry.weight}${entry.weightUnit}` : '';
-    const unitSuffix = entry.unit === 'seconds' ? '초' : '';
 
     card.innerHTML = `
       <div class="exercise-header">
@@ -1032,16 +1010,12 @@ function renderWorkout() {
       <div class="sets">
         ${entry.targets.map((target, si) => {
           const actual = entry.actuals[si];
-          let btnClass = '';
-          let btnText = '—';
-          if (actual !== null) {
-            btnText = actual + unitSuffix;
-            btnClass = actual > target ? 'exceed' : actual === target ? 'done' : 'partial';
-          }
+          const btnClass = actual !== null ? setResultClass(actual, target) : '';
+          const btnText = actual !== null ? actual + us : '—';
           return `
             <div class="set">
               <div class="set-label">${si+1}세트</div>
-              <div class="set-target">목표 ${target}${unitSuffix}</div>
+              <div class="set-target">목표 ${target}${us}</div>
               <button class="set-btn ${btnClass}" onclick="onSetTap('${entry.exerciseId}', ${si}, ${target}, ${actual !== null ? actual : 'null'}, '${esc(entry.exerciseName)}', '${entry.unit}')">${btnText}</button>
             </div>
           `;
@@ -1063,12 +1037,8 @@ function onSetTap(exerciseId, setIndex, target, currentActual, name, unit) {
       if (value !== null && value >= 0) {
         updateLogEntry(activeGroupId, exerciseId, setIndex, value);
         renderWorkout();
-        const logs = loadLogs();
-        const log = logs.find(l => l.id === todayStr() + ':' + activeGroupId);
-        if (log) {
-          const entry = log.entries.find(e => e.exerciseId === exerciseId);
-          if (entry) checkAndShowProgression(entry);
-        }
+        const entry = currentLog?.entries.find(e => e.exerciseId === exerciseId);
+        if (entry) checkAndShowProgression(entry);
       }
     }
   );
@@ -1119,10 +1089,7 @@ document.getElementById('exerciseList').addEventListener('click', (e) => {
 });
 
 function showHistory(exerciseId, exerciseName) {
-  const logs = loadLogs();
-  const days = ['일','월','화','수','목','금','토'];
-
-  const entries = logs
+  const entries = loadLogs()
     .filter(l => l.groupId === activeGroupId)
     .map(l => ({ date: l.date, entry: l.entries.find(e => e.exerciseId === exerciseId) }))
     .filter(x => x.entry && x.entry.actuals.some(a => a !== null))
@@ -1136,16 +1103,15 @@ function showHistory(exerciseId, exerciseName) {
     list.innerHTML = '<div class="history-empty">기록이 없습니다</div>';
   } else {
     list.innerHTML = entries.map(({ date, entry }) => {
-      const us = entry.unit === 'seconds' ? '초' : '';
+      const us = getUnitSuffix(entry.unit);
       const d = new Date(date + 'T00:00:00');
-      const dateStr = `${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} (${days[d.getDay()]})`;
+      const dateStr = `${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} (${WEEK_DAYS[d.getDay()]})`;
       const sets = entry.targets.map((target, i) => {
         const actual = entry.actuals[i];
         if (actual === null) {
           return `<div class="history-set empty">—<div class="h-target">/${target}${us}</div></div>`;
         }
-        const cls = actual > target ? 'exceed' : actual === target ? 'done' : 'partial';
-        return `<div class="history-set ${cls}">${actual}${us}<div class="h-target">/${target}${us}</div></div>`;
+        return `<div class="history-set ${setResultClass(actual, target)}">${actual}${us}<div class="h-target">/${target}${us}</div></div>`;
       }).join('');
       return `<div class="history-row"><div class="history-date">${dateStr}</div><div class="history-sets">${sets}</div></div>`;
     }).join('');
@@ -1163,8 +1129,6 @@ function closeHistoryModal(event) {
 // ==================== Progression ====================
 let progressionCallback = null;
 
-// getNextTargets is defined in lib.js
-
 function checkAndShowProgression(entry) {
   const allDone = entry.actuals.every((v, i) => v !== null && v >= entry.targets[i]);
   if (!allDone) return;
@@ -1172,11 +1136,11 @@ function checkAndShowProgression(entry) {
   const group = routine.groups.find(g => g.id === activeGroupId);
   const ex = group?.exercises.find(e => e.id === entry.exerciseId);
   const isSeconds = entry.unit === 'seconds';
-  const setGap = ex?.setGap ?? (isSeconds ? 10 : 5);
-  const progressStep = ex?.progressStep ?? (isSeconds ? 5 : 1);
+  const setGap = ex?.setGap ?? (isSeconds ? DEFAULT_SET_GAP_SECONDS : DEFAULT_SET_GAP_REPS);
+  const progressStep = ex?.progressStep ?? (isSeconds ? DEFAULT_PROGRESS_STEP_SECONDS : DEFAULT_PROGRESS_STEP_REPS);
 
   const next = getNextTargets(entry.targets, setGap, progressStep);
-  const us = entry.unit === 'seconds' ? '초' : '회';
+  const us = isSeconds ? '초' : '회';
 
   progressionCallback = () => {
     const group = routine.groups.find(g => g.id === activeGroupId);
@@ -1307,9 +1271,9 @@ function renderEditList() {
           <label>진급</label>
           <div style="display:flex; gap:6px; align-items:center;">
             <span style="font-size:12px; color:#8e8e93;">간격</span>
-            <input class="edit-input small edit-set-gap" type="number" inputmode="numeric" value="${ex.setGap ?? (ex.unit === 'seconds' ? 10 : 5)}">
+            <input class="edit-input small edit-set-gap" type="number" inputmode="numeric" value="${ex.setGap ?? (ex.unit === 'seconds' ? DEFAULT_SET_GAP_SECONDS : DEFAULT_SET_GAP_REPS)}">
             <span style="font-size:12px; color:#8e8e93;">단위</span>
-            <input class="edit-input small edit-progress-step" type="number" inputmode="numeric" value="${ex.progressStep ?? (ex.unit === 'seconds' ? 5 : 1)}">
+            <input class="edit-input small edit-progress-step" type="number" inputmode="numeric" value="${ex.progressStep ?? (ex.unit === 'seconds' ? DEFAULT_PROGRESS_STEP_SECONDS : DEFAULT_PROGRESS_STEP_REPS)}">
           </div>
         </div>
       `;
@@ -1380,8 +1344,8 @@ function syncAllEdits() {
       ex.targets[0] = parseInt(card.querySelector('.edit-t1').value) || 0;
       ex.targets[1] = parseInt(card.querySelector('.edit-t2').value) || 0;
       ex.targets[2] = parseInt(card.querySelector('.edit-t3').value) || 0;
-      ex.setGap = parseInt(card.querySelector('.edit-set-gap').value) || (ex.unit === 'seconds' ? 10 : 5);
-      ex.progressStep = parseInt(card.querySelector('.edit-progress-step').value) || (ex.unit === 'seconds' ? 5 : 1);
+      ex.setGap = parseInt(card.querySelector('.edit-set-gap').value) || (ex.unit === 'seconds' ? DEFAULT_SET_GAP_SECONDS : DEFAULT_SET_GAP_REPS);
+      ex.progressStep = parseInt(card.querySelector('.edit-progress-step').value) || (ex.unit === 'seconds' ? DEFAULT_PROGRESS_STEP_SECONDS : DEFAULT_PROGRESS_STEP_REPS);
     });
   });
 }
