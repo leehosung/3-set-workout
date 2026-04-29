@@ -654,7 +654,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v4.6';
+const APP_VERSION = 'v4.7';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -864,12 +864,14 @@ async function loadFromSupabase() {
       .eq('user_id', currentUser.id)
       .gte('log_key', dateNDaysAgo(SUPABASE_LOG_DAYS));
 
+    const supabaseByKey = new Map((lData || []).map(({ log_key, data }) => [log_key, data]));
+
     if (!lErr && lData && lData.length > 0) {
       const countActuals = (log) =>
         log.entries.reduce((n, e) => n + e.actuals.filter(a => a !== null).length, 0);
 
       let allLogs = loadLogs();
-      lData.forEach(({ log_key, data: logData }) => {
+      supabaseByKey.forEach((logData, log_key) => {
         const idx = allLogs.findIndex(l => l.id === log_key);
         if (idx < 0) { allLogs.push(logData); return; }
 
@@ -882,6 +884,19 @@ async function loadFromSupabase() {
         }
       });
       saveLogs(allLogs);
+    }
+
+    // 실패한 동기화 재시도: 로컬이 Supabase보다 최신인 로그를 역방향 동기화
+    if (!lErr) {
+      const cutoff = dateNDaysAgo(SUPABASE_LOG_DAYS);
+      loadLogs()
+        .filter(l => l.date >= cutoff && l.entries.some(e => e.actuals.some(a => a !== null)))
+        .forEach(l => {
+          const remoteTs = supabaseByKey.get(l.id)?.updatedAt || 0;
+          if ((l.updatedAt || 0) > remoteTs) {
+            syncLogToSupabase(l.id, l).catch(e => console.warn('Supabase retry sync error:', e));
+          }
+        });
     }
 
     if (!routine.groups.find(g => g.id === activeGroupId)) {
