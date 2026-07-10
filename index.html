@@ -533,6 +533,7 @@ body {
 }
 .modal-btn.cancel { background: #e5e5ea; color: #1c1c1e; }
 .modal-btn.confirm { background: #007aff; color: #fff; }
+.modal-btn.danger { background: #ff3b30; color: #fff; }
 </style>
 </head>
 <body>
@@ -595,6 +596,7 @@ body {
     <div class="modal-subtitle" id="modalSubtitle"></div>
     <input class="modal-input" id="modalInput" type="number" inputmode="numeric" pattern="[0-9]*">
     <div class="modal-buttons">
+      <button class="modal-btn danger" id="modalClearBtn" style="display:none" onclick="clearModal()">지우기</button>
       <button class="modal-btn cancel" onclick="cancelModal()">취소</button>
       <button class="modal-btn confirm" onclick="confirmModal()">확인</button>
     </div>
@@ -654,7 +656,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v4.7';
+const APP_VERSION = 'v4.8';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -974,6 +976,7 @@ let activeGroupId = getDefaultGroupId();
 
 let currentLog = null;
 let modalCallback = null;
+let clearCallback = null;
 
 // ==================== Render Workout ====================
 function renderGroupTabs() {
@@ -1044,6 +1047,10 @@ function renderWorkout() {
 function onSetTap(exerciseId, setIndex, target, currentActual, name, unit) {
   const unitLabel = unit === 'seconds' ? '초' : '회';
   const defaultVal = currentActual !== null ? currentActual : target;
+  const onClear = currentActual !== null ? () => {
+    updateLogEntry(activeGroupId, exerciseId, setIndex, null);
+    renderWorkout();
+  } : null;
   openModal(
     `${name} — ${setIndex+1}세트`,
     `목표: ${target}${unitLabel}`,
@@ -1055,17 +1062,20 @@ function onSetTap(exerciseId, setIndex, target, currentActual, name, unit) {
         const entry = currentLog?.entries.find(e => e.exerciseId === exerciseId);
         if (entry) checkAndShowProgression(entry);
       }
-    }
+    },
+    onClear
   );
 }
 
 // ==================== Modal ====================
-function openModal(title, subtitle, defaultValue, callback) {
+function openModal(title, subtitle, defaultValue, callback, onClear) {
   modalCallback = callback;
+  clearCallback = onClear || null;
   document.getElementById('modalTitle').textContent = title;
   document.getElementById('modalSubtitle').textContent = subtitle;
   const input = document.getElementById('modalInput');
   input.value = defaultValue;
+  document.getElementById('modalClearBtn').style.display = onClear ? '' : 'none';
   document.getElementById('modalOverlay').classList.add('active');
   setTimeout(() => { input.focus(); input.select(); }, 100);
 }
@@ -1074,15 +1084,22 @@ function confirmModal() {
   const input = document.getElementById('modalInput');
   const value = parseInt(input.value, 10);
   document.getElementById('modalOverlay').classList.remove('active');
-  if (modalCallback && !isNaN(value)) {
-    modalCallback(value);
-  }
+  if (modalCallback && !isNaN(value)) modalCallback(value);
   modalCallback = null;
+  clearCallback = null;
 }
 
 function cancelModal() {
   document.getElementById('modalOverlay').classList.remove('active');
   modalCallback = null;
+  clearCallback = null;
+}
+
+function clearModal() {
+  document.getElementById('modalOverlay').classList.remove('active');
+  if (clearCallback) clearCallback();
+  modalCallback = null;
+  clearCallback = null;
 }
 
 function closeModal(event) {
