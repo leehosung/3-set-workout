@@ -8,7 +8,10 @@
 <title>3-Set Workout</title>
 <link rel="icon" type="image/svg+xml" href="/logo.svg">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="lib.js"></script>
+<!-- ?v= 는 캐시 무효화용. index.html과 lib.js가 각각 캐시되므로, 버전이 붙어
+     있지 않으면 새 index.html + 오래된 lib.js 조합이 생겨 함수가 없어진다.
+     APP_VERSION과 반드시 같아야 하며 __tests__/version.test.js가 이를 검사한다. -->
+<script src="lib.js?v=5.3"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
@@ -850,7 +853,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v5.2';
+const APP_VERSION = 'v5.3';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
