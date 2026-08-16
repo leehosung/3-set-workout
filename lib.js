@@ -121,6 +121,15 @@ function elapsedSeconds(startedAt, now, target) {
   return Math.min(sec, target);
 }
 
+// Which second to sound a cue on, or null for silence.  The timer ticks much
+// faster than once a second, so `lastBeeped` keeps a given second from firing
+// repeatedly.  Only the final `lastN` seconds are announced.
+function beepSecond(remain, lastBeeped, lastN) {
+  const sec = Math.ceil(remain);
+  if (sec <= 0 || sec > lastN) return null;
+  return sec === lastBeeped ? null : sec;
+}
+
 // ==================== Statistics ====================
 
 // Number of sets actually recorded in a log (nulls are untouched sets).
@@ -231,6 +240,6 @@ if (typeof module !== 'undefined' && module.exports) {
     uid, dateStr, parseDate, shiftDays, todayStr, todayDisplay, logKey, dateNDaysAgo,
     getUnitSuffix, setResultClass, getNextTargets, hasRecordedSet, findNextGroupId,
     countRecordedSets, heatLevel, buildHeatmap, workoutStats, buildTargetTrends,
-    remainingSeconds, elapsedSeconds,
+    remainingSeconds, elapsedSeconds, beepSecond,
   };
 }
