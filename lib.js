@@ -105,6 +105,22 @@ function findNextGroupId(logs, groups, today) {
   return groups[(latestGroupIdx + 1) % groups.length].id;
 }
 
+// ==================== Countdown ====================
+
+// Seconds left on a countdown, never negative.  Driven by wall-clock difference
+// rather than a tick counter so backgrounding the app cannot drift the timer.
+function remainingSeconds(startedAt, now, target) {
+  return Math.max(0, target - (now - startedAt) / 1000);
+}
+
+// Seconds to record when the user stops a countdown early.  Capped at the
+// target, and 0 when stopped almost immediately (nothing was really held).
+function elapsedSeconds(startedAt, now, target) {
+  const sec = Math.round((now - startedAt) / 1000);
+  if (sec <= 0) return 0;
+  return Math.min(sec, target);
+}
+
 // ==================== Statistics ====================
 
 // Number of sets actually recorded in a log (nulls are untouched sets).
@@ -215,5 +231,6 @@ if (typeof module !== 'undefined' && module.exports) {
     uid, dateStr, parseDate, shiftDays, todayStr, todayDisplay, logKey, dateNDaysAgo,
     getUnitSuffix, setResultClass, getNextTargets, hasRecordedSet, findNextGroupId,
     countRecordedSets, heatLevel, buildHeatmap, workoutStats, buildTargetTrends,
+    remainingSeconds, elapsedSeconds,
   };
 }
