@@ -1,6 +1,8 @@
 const {
   uid, todayStr, todayDisplay, logKey, dateNDaysAgo,
   getUnitSuffix, setResultClass, getNextTargets, hasRecordedSet, findNextGroupId,
+  dateStr, shiftDays, countRecordedSets, heatLevel, buildHeatmap,
+  workoutStats, buildTargetTrends,
 } = require('../lib');
 
 // ==================== uid ====================
@@ -233,5 +235,257 @@ describe('findNextGroupId', () => {
   it('defaults to the real today when the date argument is omitted', () => {
     const logs = [done(todayStr(), 'g2')];
     expect(findNextGroupId(logs, groups)).toBe('g2');
+  });
+});
+
+// ==================== dateStr / shiftDays ====================
+describe('dateStr', () => {
+  it('formats a Date as YYYY-MM-DD in local time', () => {
+    expect(dateStr(new Date(2026, 7, 16))).toBe('2026-08-16');
+  });
+
+  it('zero-pads month and day', () => {
+    expect(dateStr(new Date(2026, 0, 5))).toBe('2026-01-05');
+  });
+
+  it('uses local time, not UTC', () => {
+    // 23:30 local on the 16th is the 17th in UTC for anyone east of GMT.
+    expect(dateStr(new Date(2026, 7, 16, 23, 30))).toBe('2026-08-16');
+  });
+});
+
+describe('shiftDays', () => {
+  it('moves forward', () => {
+    expect(shiftDays('2026-08-16', 3)).toBe('2026-08-19');
+  });
+
+  it('moves backward', () => {
+    expect(shiftDays('2026-08-16', -3)).toBe('2026-08-13');
+  });
+
+  it('crosses a month boundary', () => {
+    expect(shiftDays('2026-08-01', -1)).toBe('2026-07-31');
+  });
+
+  it('crosses a year boundary', () => {
+    expect(shiftDays('2026-01-01', -1)).toBe('2025-12-31');
+  });
+
+  it('handles leap day', () => {
+    expect(shiftDays('2028-02-28', 1)).toBe('2028-02-29');
+  });
+});
+
+// ==================== countRecordedSets ====================
+describe('countRecordedSets', () => {
+  it('returns 0 for a log with no entries', () => {
+    expect(countRecordedSets({})).toBe(0);
+  });
+
+  it('counts only non-null actuals', () => {
+    const log = { entries: [{ actuals: [10, null, 6] }, { actuals: [null, null, null] }] };
+    expect(countRecordedSets(log)).toBe(2);
+  });
+
+  it('counts a recorded 0 as a set', () => {
+    expect(countRecordedSets({ entries: [{ actuals: [0, 0, null] }] })).toBe(2);
+  });
+});
+
+// ==================== heatLevel ====================
+describe('heatLevel', () => {
+  it('returns 0 for no sets', () => {
+    expect(heatLevel(0)).toBe(0);
+  });
+
+  it('scales up through four shades', () => {
+    expect(heatLevel(1)).toBe(1);
+    expect(heatLevel(2)).toBe(1);
+    expect(heatLevel(3)).toBe(2);
+    expect(heatLevel(4)).toBe(2);
+    expect(heatLevel(5)).toBe(3);
+    expect(heatLevel(6)).toBe(3);
+    expect(heatLevel(7)).toBe(4);
+    expect(heatLevel(30)).toBe(4);
+  });
+});
+
+// ==================== buildHeatmap ====================
+describe('buildHeatmap', () => {
+  const done = (date, sets) => ({
+    date, groupId: 'g1', entries: [{ actuals: sets }],
+  });
+
+  // 2026-08-16 is a Sunday, so its week runs 08-16 (Sun) .. 08-22 (Sat).
+  const SUNDAY = '2026-08-16';
+
+  it('returns one column per week, each 7 slots', () => {
+    const grid = buildHeatmap([], 4, SUNDAY);
+    expect(grid).toHaveLength(4);
+    grid.forEach(col => expect(col).toHaveLength(7));
+  });
+
+  it('places today in the last column and nulls the rest of that week', () => {
+    const grid = buildHeatmap([], 2, SUNDAY);
+    const lastCol = grid[1];
+    expect(lastCol[0].date).toBe(SUNDAY);
+    expect(lastCol.slice(1).every(c => c === null)).toBe(true);
+  });
+
+  it('rows run Sunday to Saturday', () => {
+    const grid = buildHeatmap([], 2, SUNDAY);
+    const prevWeek = grid[0];
+    expect(prevWeek[0].date).toBe('2026-08-09');
+    expect(prevWeek[6].date).toBe('2026-08-15');
+  });
+
+  it('counts recorded sets onto the matching day', () => {
+    const grid = buildHeatmap([done('2026-08-10', [10, 8, 6])], 2, SUNDAY);
+    expect(grid[0][1]).toEqual({ date: '2026-08-10', sets: 3 });
+  });
+
+  it('sums multiple groups worked on the same day', () => {
+    const logs = [done('2026-08-10', [10, 8, 6]), done('2026-08-10', [5, null, null])];
+    expect(buildHeatmap(logs, 2, SUNDAY)[0][1].sets).toBe(4);
+  });
+
+  it('ignores logs with no recorded sets', () => {
+    const grid = buildHeatmap([done('2026-08-10', [null, null, null])], 2, SUNDAY);
+    expect(grid[0][1].sets).toBe(0);
+  });
+
+  it('ignores logs outside the window', () => {
+    const grid = buildHeatmap([done('2020-01-01', [10, 8, 6])], 2, SUNDAY);
+    const total = grid.flat().filter(Boolean).reduce((n, c) => n + c.sets, 0);
+    expect(total).toBe(0);
+  });
+
+  it('keeps a full last column when today is a Saturday', () => {
+    const grid = buildHeatmap([], 2, '2026-08-22');
+    expect(grid[1].every(c => c !== null)).toBe(true);
+    expect(grid[1][6].date).toBe('2026-08-22');
+  });
+});
+
+// ==================== workoutStats ====================
+describe('workoutStats', () => {
+  const done = (date) => ({ date, entries: [{ actuals: [10, 8, 6] }] });
+  const opened = (date) => ({ date, entries: [{ actuals: [null, null, null] }] });
+
+  // 2026-08-19 is a Wednesday; its Monday is 2026-08-17.
+  const WED = '2026-08-19';
+
+  it('returns zeros for no logs', () => {
+    expect(workoutStats([], WED)).toEqual({
+      total: 0, thisWeek: 0, last30: 0, lastDate: null,
+    });
+  });
+
+  it('counts a day once even if several groups were done', () => {
+    const stats = workoutStats([done(WED), done(WED)], WED);
+    expect(stats.total).toBe(1);
+  });
+
+  it('ignores logs with no recorded sets', () => {
+    expect(workoutStats([opened(WED)], WED).total).toBe(0);
+  });
+
+  it('counts this week from Monday', () => {
+    const logs = [done('2026-08-17'), done('2026-08-19'), done('2026-08-16')];
+    expect(workoutStats(logs, WED).thisWeek).toBe(2);
+  });
+
+  it('treats Sunday as the end of the week, not the start', () => {
+    // 2026-08-16 is a Sunday; its week starts Monday 2026-08-10.
+    expect(workoutStats([done('2026-08-10')], '2026-08-16').thisWeek).toBe(1);
+  });
+
+  it('counts a 30-day window inclusive of both ends', () => {
+    const logs = [done(shiftDays(WED, -29)), done(shiftDays(WED, -30))];
+    expect(workoutStats(logs, WED).last30).toBe(1);
+  });
+
+  it('reports the most recent workout date', () => {
+    const logs = [done('2026-08-10'), done('2026-08-17'), done('2026-08-12')];
+    expect(workoutStats(logs, WED).lastDate).toBe('2026-08-17');
+  });
+
+  it('excludes days after the reference date', () => {
+    expect(workoutStats([done('2026-09-01')], WED).total).toBe(1);
+    expect(workoutStats([done('2026-09-01')], WED).thisWeek).toBe(0);
+  });
+});
+
+// ==================== buildTargetTrends ====================
+describe('buildTargetTrends', () => {
+  const log = (date, targets, actuals, name) => ({
+    date,
+    entries: [{
+      exerciseId: 'e1',
+      exerciseName: name || '턱걸이',
+      unit: 'reps',
+      targets,
+      actuals,
+    }],
+  });
+
+  it('returns nothing when no sets were recorded', () => {
+    const trends = buildTargetTrends([log('2026-08-10', [18, 12, 7], [null, null, null])]);
+    expect(trends).toEqual([]);
+  });
+
+  it('builds one point per recorded day, oldest first', () => {
+    const trends = buildTargetTrends([
+      log('2026-08-12', [19, 12, 7], [19, 12, 7]),
+      log('2026-08-10', [18, 12, 7], [18, 12, 7]),
+    ]);
+    expect(trends).toHaveLength(1);
+    expect(trends[0].points.map(p => p.date)).toEqual(['2026-08-10', '2026-08-12']);
+    expect(trends[0].points.map(p => p.sum)).toEqual([37, 38]);
+  });
+
+  it('reports the delta from first to last point', () => {
+    const trends = buildTargetTrends([
+      log('2026-08-10', [18, 12, 7], [18, 12, 7]),
+      log('2026-08-12', [20, 12, 7], [20, 12, 7]),
+    ]);
+    expect(trends[0].delta).toBe(2);
+  });
+
+  it('reports a negative delta when targets were lowered', () => {
+    const trends = buildTargetTrends([
+      log('2026-08-10', [20, 12, 7], [20, 12, 7]),
+      log('2026-08-12', [18, 12, 7], [18, 12, 7]),
+    ]);
+    expect(trends[0].delta).toBe(-2);
+  });
+
+  it('skips days with no recorded set but keeps the rest', () => {
+    const trends = buildTargetTrends([
+      log('2026-08-10', [18, 12, 7], [18, 12, 7]),
+      log('2026-08-11', [19, 12, 7], [null, null, null]),
+      log('2026-08-12', [19, 12, 7], [19, 12, 7]),
+    ]);
+    expect(trends[0].points).toHaveLength(2);
+  });
+
+  it('uses the most recent name when an exercise was renamed', () => {
+    const trends = buildTargetTrends([
+      log('2026-08-10', [18, 12, 7], [18, 12, 7], '턱걸이'),
+      log('2026-08-12', [18, 12, 7], [18, 12, 7], '풀업'),
+    ]);
+    expect(trends[0].name).toBe('풀업');
+  });
+
+  it('tracks several exercises independently', () => {
+    const trends = buildTargetTrends([{
+      date: '2026-08-10',
+      entries: [
+        { exerciseId: 'a', exerciseName: 'A', unit: 'reps', targets: [10, 8, 6], actuals: [10, 8, 6] },
+        { exerciseId: 'b', exerciseName: 'B', unit: 'seconds', targets: [60, 50, 40], actuals: [60, null, null] },
+      ],
+    }]);
+    expect(trends).toHaveLength(2);
+    expect(trends.find(t => t.exerciseId === 'b').unit).toBe('seconds');
   });
 });
