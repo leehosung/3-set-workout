@@ -32,10 +32,21 @@ body {
   top: 0;
   background: #f2f2f7;
   z-index: 10;
+  gap: 8px;
 }
-.header h1 { font-size: 20px; font-weight: 700; }
-.header .date { font-size: 13px; color: #8e8e93; }
-.header-right { display: flex; gap: 12px; align-items: center; }
+/* 헤더 항목이 좁은 화면에서 글자 중간에 줄바꿈되지 않도록 전부 nowrap.
+   폭이 모자라면 날짜만 말줄임으로 줄어들고, 제목과 버튼은 그대로 남는다. */
+.header h1 { font-size: 20px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+.header .date {
+  font-size: 13px;
+  color: #8e8e93;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.header-right { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.header-right .btn-text, .header-right .user-avatar { flex-shrink: 0; }
 .btn-text {
   font-size: 15px;
   color: #007aff;
@@ -44,6 +55,13 @@ body {
   cursor: pointer;
   padding: 4px 0;
   font-weight: 500;
+  white-space: nowrap;
+}
+/* 좁은 화면에서는 날짜를 줄여 버튼이 밀려나지 않게 한다. */
+@media (max-width: 400px) {
+  .header h1 { font-size: 18px; }
+  .header .date { font-size: 11px; }
+  .header-right { gap: 8px; }
 }
 
 /* User avatar */
@@ -534,6 +552,117 @@ body {
 .modal-btn.cancel { background: #e5e5ea; color: #1c1c1e; }
 .modal-btn.confirm { background: #007aff; color: #fff; }
 .modal-btn.danger { background: #ff3b30; color: #fff; }
+
+/* Stats screen */
+.stats-screen { display: none; }
+.stats-screen.active { display: block; }
+
+.stats-card {
+  background: #fff;
+  border-radius: 14px;
+  margin-bottom: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 0.5px 1px rgba(0,0,0,0.05);
+}
+.stats-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #8e8e93;
+  margin-bottom: 12px;
+}
+
+/* Summary tiles */
+.stat-tiles { display: flex; gap: 8px; margin-bottom: 10px; }
+.stat-tile {
+  flex: 1;
+  background: #fff;
+  border-radius: 14px;
+  padding: 14px 8px;
+  text-align: center;
+  box-shadow: 0 0.5px 1px rgba(0,0,0,0.05);
+}
+.stat-tile-value { font-size: 24px; font-weight: 700; }
+.stat-tile-label { font-size: 11px; color: #8e8e93; margin-top: 2px; }
+
+/* Heatmap */
+.heatmap-scroll { overflow-x: auto; margin: 0 -4px; padding: 0 4px 4px; }
+.heatmap-grid { display: flex; gap: 3px; width: max-content; }
+.heatmap-col { display: flex; flex-direction: column; gap: 3px; }
+.heat-cell {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: #ebedf0;
+}
+.heat-cell.empty { background: transparent; }
+.heat-cell.l1 { background: #9be9a8; }
+.heat-cell.l2 { background: #40c463; }
+.heat-cell.l3 { background: #30a14e; }
+.heat-cell.l4 { background: #216e39; }
+.heat-cell.today { box-shadow: 0 0 0 1.5px #007aff; }
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  font-size: 10px;
+  color: #8e8e93;
+  margin-top: 8px;
+}
+.heatmap-months {
+  display: flex;
+  gap: 3px;
+  width: max-content;
+  font-size: 9px;
+  color: #8e8e93;
+  margin-bottom: 4px;
+  height: 12px;
+}
+.heatmap-month { width: 12px; flex-shrink: 0; white-space: nowrap; }
+
+/* Target trend */
+.trend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f2f2f7;
+}
+.trend-row:last-child { border-bottom: none; }
+.trend-info { flex: 1; min-width: 0; }
+.trend-name {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trend-sub {
+  font-size: 11px;
+  color: #8e8e93;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trend-delta {
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 46px;
+  text-align: right;
+}
+.trend-delta.up { color: #34c759; }
+.trend-delta.flat { color: #c7c7cc; }
+.trend-delta.down { color: #ff9500; }
+.trend-spark { flex-shrink: 0; }
+
+.stats-empty {
+  text-align: center;
+  color: #8e8e93;
+  padding: 28px 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
 </style>
 </head>
 <body>
@@ -568,6 +697,7 @@ body {
     <h1>3-Set Workout</h1>
     <div class="header-right">
       <span class="date" id="todayDate"></span>
+      <button class="btn-text" onclick="showStatsScreen()">통계</button>
       <button class="btn-text" onclick="showEditScreen()">편집</button>
       <button class="user-avatar" id="userAvatar" onclick="confirmSignOut()"></button>
     </div>
@@ -586,6 +716,18 @@ body {
     </div>
   </div>
   <div id="editList"></div>
+  <div class="spacer"></div>
+</div>
+
+<!-- Stats Screen -->
+<div class="stats-screen" id="statsScreen">
+  <div class="header">
+    <h1>통계</h1>
+    <div class="header-right">
+      <button class="btn-text" onclick="closeStatsScreen()">닫기</button>
+    </div>
+  </div>
+  <div id="statsContent"></div>
   <div class="spacer"></div>
 </div>
 
@@ -656,12 +798,15 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v4.9';
+const APP_VERSION = 'v5.0';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
 const MAX_LOG_DAYS = 365;
-const SUPABASE_LOG_DAYS = 30;
+// 통계(히트맵/목표 추이)가 기기를 바꿔도 보이도록 로컬 보관 기간과 맞춘다.
+const SUPABASE_LOG_DAYS = MAX_LOG_DAYS;
+// 52주 = 364일. MAX_LOG_DAYS(365) 안에 들어가야 빈 칸이 생기지 않는다.
+const HEATMAP_WEEKS = 52;
 const DEFAULT_SET_GAP_REPS = 5;
 const DEFAULT_SET_GAP_SECONDS = 10;
 const DEFAULT_PROGRESS_STEP_REPS = 1;
@@ -1216,6 +1361,134 @@ function closeProgressionModal(event) {
   if (event.target === document.getElementById('progressionOverlay')) {
     declineProgression();
   }
+}
+
+// ==================== Stats Screen ====================
+function showStatsScreen() {
+  document.getElementById('workoutScreen').classList.add('hidden');
+  document.getElementById('statsScreen').classList.add('active');
+  renderStats();
+}
+
+function closeStatsScreen() {
+  document.getElementById('statsScreen').classList.remove('active');
+  document.getElementById('workoutScreen').classList.remove('hidden');
+}
+
+function renderStats() {
+  const logs = loadLogs();
+  const content = document.getElementById('statsContent');
+  const stats = workoutStats(logs);
+
+  if (stats.total === 0) {
+    content.innerHTML =
+      '<div class="stats-empty">아직 기록이 없습니다.<br>운동을 기록하면 여기에 쌓입니다.</div>';
+    return;
+  }
+
+  const trends = buildTargetTrends(logs).sort((a, b) => b.delta - a.delta);
+  content.innerHTML = renderStatTiles(stats) + renderHeatmapCard(logs, stats) + renderTrendCard(trends);
+
+  // 최근 날짜가 오른쪽 끝이므로 끝까지 스크롤해서 보여준다.
+  const scroller = document.getElementById('heatmapScroll');
+  if (scroller) scroller.scrollLeft = scroller.scrollWidth;
+}
+
+function renderStatTiles(stats) {
+  const tile = (value, label) =>
+    `<div class="stat-tile"><div class="stat-tile-value">${value}</div><div class="stat-tile-label">${label}</div></div>`;
+  return `<div class="stat-tiles">
+    ${tile(stats.thisWeek, '이번 주')}
+    ${tile(stats.last30, '최근 30일')}
+    ${tile(stats.total, '전체')}
+  </div>`;
+}
+
+function daysAgoLabel(date) {
+  const days = Math.round((parseDate(todayStr()) - parseDate(date)) / 86400000);
+  if (days <= 0) return '오늘';
+  if (days === 1) return '어제';
+  return `${days}일 전`;
+}
+
+function renderHeatmapCard(logs, stats) {
+  const grid = buildHeatmap(logs, HEATMAP_WEEKS);
+  const today = todayStr();
+
+  const months = grid.map(col => {
+    const firstOfMonth = col.find(c => c && c.date.slice(8) === '01');
+    const label = firstOfMonth ? Number(firstOfMonth.date.slice(5, 7)) + '월' : '';
+    return `<div class="heatmap-month">${label}</div>`;
+  }).join('');
+
+  const cols = grid.map(col => {
+    const cells = col.map(c => {
+      if (!c) return '<div class="heat-cell empty"></div>';
+      const level = c.sets > 0 ? ' l' + heatLevel(c.sets) : '';
+      const isToday = c.date === today ? ' today' : '';
+      return `<div class="heat-cell${level}${isToday}" title="${c.date} · ${c.sets}세트"></div>`;
+    }).join('');
+    return `<div class="heatmap-col">${cells}</div>`;
+  }).join('');
+
+  const legend = [0, 1, 2, 3, 4]
+    .map(l => `<div class="heat-cell${l ? ' l' + l : ''}"></div>`)
+    .join('');
+
+  return `<div class="stats-card">
+    <div class="stats-card-title">운동 기록 — 마지막 운동 ${daysAgoLabel(stats.lastDate)}</div>
+    <div class="heatmap-scroll" id="heatmapScroll">
+      <div class="heatmap-months">${months}</div>
+      <div class="heatmap-grid">${cols}</div>
+    </div>
+    <div class="heatmap-legend">적음 ${legend} 많음</div>
+  </div>`;
+}
+
+// 점 하나짜리(운동 1회) 추이는 선이 그려지지 않으므로 빈 자리를 남긴다.
+function sparkline(points, w = 64, h = 24) {
+  if (points.length < 2) return `<svg width="${w}" height="${h}"></svg>`;
+
+  const sums = points.map(p => p.sum);
+  const min = Math.min(...sums);
+  const span = Math.max(...sums) - min || 1;
+  const coords = sums.map((s, i) => {
+    const x = (i / (sums.length - 1)) * (w - 2) + 1;
+    const y = h - 1 - ((s - min) / span) * (h - 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <polyline points="${coords}" fill="none" stroke="#007aff" stroke-width="1.5"
+      stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function renderTrendCard(trends) {
+  if (!trends.length) return '';
+
+  const rows = trends.map(t => {
+    const us = getUnitSuffix(t.unit) || '회';
+    // 목표는 앱의 다른 곳과 같이 ' / '로 띄어 쓴다. '18/12/7'로 붙이면 날짜처럼 읽힌다.
+    const fmt = (p) => p.targets.join(' / ');
+    const first = fmt(t.points[0]);
+    const last = fmt(t.points[t.points.length - 1]);
+    const cls = t.delta > 0 ? 'up' : t.delta < 0 ? 'down' : 'flat';
+    const sign = t.delta > 0 ? '+' : '';
+    return `<div class="trend-row">
+      <div class="trend-info">
+        <div class="trend-name">${esc(t.name)}</div>
+        <div class="trend-sub">${first} → ${last} · ${t.points.length}회</div>
+      </div>
+      <div class="trend-spark">${sparkline(t.points)}</div>
+      <div class="trend-delta ${cls}">${sign}${t.delta}${us}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="stats-card">
+    <div class="stats-card-title">목표값 추이</div>
+    ${rows}
+  </div>`;
 }
 
 // ==================== Edit Screen ====================
