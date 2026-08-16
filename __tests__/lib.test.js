@@ -1,6 +1,6 @@
 const {
   uid, todayStr, todayDisplay, logKey, dateNDaysAgo,
-  getUnitSuffix, setResultClass, getNextTargets, findNextGroupId,
+  getUnitSuffix, setResultClass, getNextTargets, hasRecordedSet, findNextGroupId,
 } = require('../lib');
 
 // ==================== uid ====================
@@ -133,6 +133,28 @@ describe('getNextTargets', () => {
   });
 });
 
+// ==================== hasRecordedSet ====================
+describe('hasRecordedSet', () => {
+  it('returns false for a log with no entries', () => {
+    expect(hasRecordedSet({ date: '2026-04-27', groupId: 'g1' })).toBe(false);
+    expect(hasRecordedSet({ date: '2026-04-27', groupId: 'g1', entries: [] })).toBe(false);
+  });
+
+  it('returns false when every actual is null', () => {
+    const log = { entries: [{ actuals: [null, null, null] }, { actuals: [null, null, null] }] };
+    expect(hasRecordedSet(log)).toBe(false);
+  });
+
+  it('returns true when at least one set is recorded', () => {
+    const log = { entries: [{ actuals: [null, null, null] }, { actuals: [null, 8, null] }] };
+    expect(hasRecordedSet(log)).toBe(true);
+  });
+
+  it('returns true for a recorded value of 0', () => {
+    expect(hasRecordedSet({ entries: [{ actuals: [0, null, null] }] })).toBe(true);
+  });
+});
+
 // ==================== findNextGroupId ====================
 describe('findNextGroupId', () => {
   const groups = [
@@ -141,46 +163,75 @@ describe('findNextGroupId', () => {
     { id: 'g3', name: 'Group 3' },
   ];
 
+  // Builds a log that counts as an actual workout.
+  const done = (date, groupId) => ({
+    date, groupId, entries: [{ actuals: [10, 8, 6] }],
+  });
+  // Builds an untouched log, as created by merely opening a group.
+  const opened = (date, groupId) => ({
+    date, groupId, entries: [{ actuals: [null, null, null] }],
+  });
+
+  const TODAY = '2026-04-28';
+
   it('returns first group when logs are empty', () => {
-    expect(findNextGroupId([], groups)).toBe('g1');
+    expect(findNextGroupId([], groups, TODAY)).toBe('g1');
   });
 
   it('returns next group after the last worked-out group', () => {
-    const logs = [
-      { date: '2026-04-26', groupId: 'g1' },
-      { date: '2026-04-27', groupId: 'g2' },
-    ];
-    expect(findNextGroupId(logs, groups)).toBe('g3');
+    const logs = [done('2026-04-26', 'g1'), done('2026-04-27', 'g2')];
+    expect(findNextGroupId(logs, groups, TODAY)).toBe('g3');
   });
 
   it('wraps around to first group after the last group', () => {
-    const logs = [{ date: '2026-04-27', groupId: 'g3' }];
-    expect(findNextGroupId(logs, groups)).toBe('g1');
+    expect(findNextGroupId([done('2026-04-27', 'g3')], groups, TODAY)).toBe('g1');
   });
 
   it('ignores older dates and uses only the latest date', () => {
-    const logs = [
-      { date: '2026-04-25', groupId: 'g3' },
-      { date: '2026-04-27', groupId: 'g1' },
-    ];
-    expect(findNextGroupId(logs, groups)).toBe('g2');
+    const logs = [done('2026-04-25', 'g3'), done('2026-04-27', 'g1')];
+    expect(findNextGroupId(logs, groups, TODAY)).toBe('g2');
   });
 
   it('returns first group when latest date logs have no matching group', () => {
-    const logs = [{ date: '2026-04-27', groupId: 'unknown-group' }];
-    expect(findNextGroupId(logs, groups)).toBe('g1');
+    const logs = [done('2026-04-27', 'unknown-group')];
+    expect(findNextGroupId(logs, groups, TODAY)).toBe('g1');
   });
 
   it('handles multiple groups worked on the same day, picks last in routine order', () => {
-    const logs = [
-      { date: '2026-04-27', groupId: 'g1' },
-      { date: '2026-04-27', groupId: 'g2' },
-    ];
-    expect(findNextGroupId(logs, groups)).toBe('g3');
+    const logs = [done('2026-04-27', 'g1'), done('2026-04-27', 'g2')];
+    expect(findNextGroupId(logs, groups, TODAY)).toBe('g3');
   });
 
   it('returns null when groups array is empty', () => {
-    const logs = [{ date: '2026-04-27', groupId: 'g1' }];
-    expect(findNextGroupId(logs, [])).toBeNull();
+    expect(findNextGroupId([done('2026-04-27', 'g1')], [], TODAY)).toBeNull();
+  });
+
+  it('stays on the group already worked on today instead of advancing', () => {
+    const logs = [done('2026-04-27', 'g1'), done(TODAY, 'g2')];
+    expect(findNextGroupId(logs, groups, TODAY)).toBe('g2');
+  });
+
+  it('stays on the last group of the day when several were worked today', () => {
+    const logs = [done(TODAY, 'g1'), done(TODAY, 'g2')];
+    expect(findNextGroupId(logs, groups, TODAY)).toBe('g2');
+  });
+
+  it('does not wrap when the last group was worked today', () => {
+    expect(findNextGroupId([done(TODAY, 'g3')], groups, TODAY)).toBe('g3');
+  });
+
+  it('ignores logs that were opened but never recorded', () => {
+    const logs = [done('2026-04-27', 'g1'), opened(TODAY, 'g2')];
+    expect(findNextGroupId(logs, groups, TODAY)).toBe('g2');
+  });
+
+  it('returns first group when every log is untouched', () => {
+    const logs = [opened(TODAY, 'g2'), opened(TODAY, 'g3')];
+    expect(findNextGroupId(logs, groups, TODAY)).toBe('g1');
+  });
+
+  it('defaults to the real today when the date argument is omitted', () => {
+    const logs = [done(todayStr(), 'g2')];
+    expect(findNextGroupId(logs, groups)).toBe('g2');
   });
 });
