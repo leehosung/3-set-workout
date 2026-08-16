@@ -61,14 +61,23 @@ function getNextTargets(targets, setGap, progressStep) {
   return [a + progressStep, b, c];
 }
 
-// Pure version of getDefaultGroupId: given logs array and groups array,
-// returns the id of the group that should be shown next.
-function findNextGroupId(logs, groups) {
-  if (!logs.length) return groups[0]?.id || null;
+// Returns true when a log has at least one recorded set.  Merely opening a
+// group creates a log with all-null actuals, which must not count as a workout.
+function hasRecordedSet(log) {
+  return !!log.entries && log.entries.some(e => e.actuals.some(a => a !== null));
+}
 
-  const latestDate = logs.reduce((max, l) => (l.date > max ? l.date : max), '');
+// Pure version of getDefaultGroupId: given logs array and groups array,
+// returns the id of the group that should be shown next.  If the most recent
+// workout happened today the same group is returned, so an in-progress session
+// is never switched away mid-workout.
+function findNextGroupId(logs, groups, today) {
+  const recorded = logs.filter(hasRecordedSet);
+  if (!recorded.length) return groups[0]?.id || null;
+
+  const latestDate = recorded.reduce((max, l) => (l.date > max ? l.date : max), '');
   const latestGroupIds = new Set(
-    logs.filter(l => l.date === latestDate).map(l => l.groupId)
+    recorded.filter(l => l.date === latestDate).map(l => l.groupId)
   );
 
   let latestGroupIdx = -1;
@@ -77,12 +86,13 @@ function findNextGroupId(logs, groups) {
   });
 
   if (latestGroupIdx === -1) return groups[0]?.id || null;
+  if (latestDate === (today || todayStr())) return groups[latestGroupIdx].id;
   return groups[(latestGroupIdx + 1) % groups.length].id;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     uid, todayStr, todayDisplay, logKey, dateNDaysAgo,
-    getUnitSuffix, setResultClass, getNextTargets, findNextGroupId,
+    getUnitSuffix, setResultClass, getNextTargets, hasRecordedSet, findNextGroupId,
   };
 }
