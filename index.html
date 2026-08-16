@@ -656,7 +656,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v4.8';
+const APP_VERSION = 'v4.9';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -688,7 +688,7 @@ const DEFAULT_GROUPS = [
     id: 'g3',
     name: '그룹 3',
     exercises: [
-      { id: uid(), name: '팔굽혀펴기', weight: null, weightUnit: 'kg', unit: 'reps', targets: [28, 22, 17], order: 0 },
+      { id: uid(), name: '팔굽혀펌기', weight: null, weightUnit: 'kg', unit: 'reps', targets: [28, 22, 17], order: 0 },
       { id: uid(), name: '윗몸일으키기', weight: null, weightUnit: 'kg', unit: 'reps', targets: [15, 15, 15], order: 1 },
     ]
   }
@@ -802,19 +802,27 @@ function updateLogEntry(groupId, exerciseId, setIndex, value) {
   syncLogToSupabase(key, log).catch(e => console.warn('Supabase log sync error:', e));
 }
 
+// 직접 고른 그룹은 'YYYY-MM-DD:groupId' 형식으로 저장하고, 오늘 고른 것만 복원한다.
+// (콜론이 없는 예전 형식은 무시되어 자동 선택으로 넘어간다)
 function loadActiveGroup() {
   try {
-    return localStorage.getItem(STORAGE_ACTIVE_GROUP) || null;
+    const raw = localStorage.getItem(STORAGE_ACTIVE_GROUP);
+    if (!raw) return null;
+    const sep = raw.indexOf(':');
+    if (sep < 0 || raw.slice(0, sep) !== todayStr()) return null;
+    return raw.slice(sep + 1);
   } catch(e) { return null; }
 }
 
 function saveActiveGroup(groupId) {
   try {
-    localStorage.setItem(STORAGE_ACTIVE_GROUP, groupId);
+    localStorage.setItem(STORAGE_ACTIVE_GROUP, logKey(groupId));
   } catch(e) {}
 }
 
 function getDefaultGroupId() {
+  const saved = loadActiveGroup();
+  if (saved && routine.groups.some(g => g.id === saved)) return saved;
   return findNextGroupId(loadLogs(), routine.groups) || 'g1';
 }
 
