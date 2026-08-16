@@ -588,6 +588,7 @@ body {
   border-radius: 3px;
   transition: width 0.1s linear;
 }
+.timer-bar.prep { background: #ff9500; }
 
 /* Stats screen */
 .stats-screen { display: none; }
@@ -791,7 +792,7 @@ body {
     <div class="timer-track"><div class="timer-bar" id="timerBar"></div></div>
     <div class="modal-buttons">
       <button class="modal-btn cancel" onclick="cancelCountdown()">취소</button>
-      <button class="modal-btn confirm" onclick="stopCountdown()">중단</button>
+      <button class="modal-btn confirm" id="timerStopBtn" onclick="stopCountdown()">중단</button>
     </div>
   </div>
 </div>
@@ -849,7 +850,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v5.1';
+const APP_VERSION = 'v5.2';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -1282,8 +1283,37 @@ function onSetTap(exerciseId, setIndex, target, currentActual, name, unit) {
 }
 
 // ==================== Countdown ====================
+const PREP_SECONDS = 5;        // 자세를 잡을 준비 시간
+const BEEP_LAST_SECONDS = 10;  // 마지막 몇 초를 소리로 알릴지
+
 let timerState = null;
 let wakeLock = null;
+let audioCtx = null;
+
+// 짧은 삐 소리. 오디오 파일 없이 Web Audio로 만들어 오프라인에서도 동작한다.
+// iOS는 사용자 제스처 안에서만 오디오를 열 수 있어서 시작 시점에 만들어 둔다.
+function beep(freq, durationMs, volume = 0.25) {
+  try {
+    if (!audioCtx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      audioCtx = new Ctx();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const dur = durationMs / 1000;
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+  } catch(e) { /* 오디오 미지원 */ }
+}
 
 // 긴 플랭크 중 화면이 꺼지지 않도록. 미지원 브라우저에서는 조용히 넘어간다.
 async function acquireWakeLock() {
@@ -1298,26 +1328,66 @@ function releaseWakeLock() {
 }
 
 function startCountdown(exerciseId, setIndex, target, name) {
-  timerState = { exerciseId, setIndex, target, name, startedAt: Date.now(), intervalId: null, done: false };
+  timerState = {
+    exerciseId, setIndex, target, name,
+    phase: 'prep',              // 'prep' → 'run'
+    startedAt: Date.now(),
+    lastBeep: null,
+    intervalId: null,
+    done: false,
+  };
 
   document.getElementById('timerTitle').textContent = `${name} — ${setIndex+1}세트`;
-  document.getElementById('timerTarget').textContent = `목표 ${target}초`;
   document.getElementById('timerValue').classList.remove('done');
   document.getElementById('timerOverlay').classList.add('active');
+  renderTimerPhase();
+
+  // 탭(사용자 제스처) 안에서 오디오를 열어 둬야 이후 소리가 난다.
+  beep(660, 80);
 
   tickCountdown();
   timerState.intervalId = setInterval(tickCountdown, 100);
   acquireWakeLock();
 }
 
+// 준비/측정 단계에 따라 라벨과 진행바 색을 바꾼다.
+function renderTimerPhase() {
+  const prep = timerState.phase === 'prep';
+  document.getElementById('timerTarget').textContent =
+    prep ? '준비' : `목표 ${timerState.target}초`;
+  document.getElementById('timerBar').classList.toggle('prep', prep);
+  // 준비 중에는 아직 버틴 시간이 없으므로 '중단'을 숨긴다.
+  document.getElementById('timerStopBtn').style.display = prep ? 'none' : '';
+}
+
 function tickCountdown() {
   if (!timerState || timerState.done) return;
 
-  const { startedAt, target } = timerState;
-  const remain = remainingSeconds(startedAt, Date.now(), target);
+  const { phase, startedAt, target } = timerState;
+  const total = phase === 'prep' ? PREP_SECONDS : target;
+  const remain = remainingSeconds(startedAt, Date.now(), total);
 
   document.getElementById('timerValue').textContent = Math.ceil(remain);
-  document.getElementById('timerBar').style.width = ((1 - remain / target) * 100) + '%';
+  document.getElementById('timerBar').style.width = ((1 - remain / total) * 100) + '%';
+
+  if (phase === 'prep') {
+    // 준비 시간이 끝나면 시작음과 함께 본 측정으로 넘어간다.
+    if (remain <= 0) {
+      timerState.phase = 'run';
+      timerState.startedAt = Date.now();
+      timerState.lastBeep = null;
+      renderTimerPhase();
+      beep(1046, 250);
+      tickCountdown();
+    }
+    return;
+  }
+
+  const sec = beepSecond(remain, timerState.lastBeep, BEEP_LAST_SECONDS);
+  if (sec !== null) {
+    timerState.lastBeep = sec;
+    beep(880, 120);
+  }
 
   if (remain <= 0) finishCountdown();
 }
@@ -1333,6 +1403,10 @@ function finishCountdown() {
   document.getElementById('timerBar').style.width = '100%';
   try { navigator.vibrate?.(200); } catch(e) {}
 
+  // 완료음은 초읽기보다 높고 길게 — 두 음을 이어 붙여 구분되게 한다.
+  beep(1046, 160);
+  setTimeout(() => beep(1568, 420), 150);
+
   // 완료 표시를 잠깐 보여준 뒤 닫는다.
   setTimeout(() => {
     closeCountdown();
@@ -1340,9 +1414,10 @@ function finishCountdown() {
   }, 900);
 }
 
-// 중단: 지금까지 버틴 시간을 기록한다.
+// 중단: 지금까지 버틴 시간을 기록한다. 준비 중이면 기록할 것이 없다.
 function stopCountdown() {
   if (!timerState) return;
+  if (timerState.phase === 'prep') return closeCountdown();
   const { exerciseId, setIndex, target, startedAt } = timerState;
   const elapsed = elapsedSeconds(startedAt, Date.now(), target);
   closeCountdown();
