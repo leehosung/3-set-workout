@@ -553,6 +553,42 @@ body {
 .modal-btn.confirm { background: #007aff; color: #fff; }
 .modal-btn.danger { background: #ff3b30; color: #fff; }
 
+/* Countdown timer */
+.timer-overlay { align-items: center; }
+.timer-box {
+  background: #fff;
+  border-radius: 20px;
+  padding: 26px 20px 22px;
+  width: 100%;
+  max-width: 340px;
+  margin: 0 16px;
+  text-align: center;
+}
+.timer-title { font-size: 15px; font-weight: 600; color: #8e8e93; }
+.timer-value {
+  font-size: 72px;
+  font-weight: 800;
+  line-height: 1.15;
+  margin: 6px 0 2px;
+  font-variant-numeric: tabular-nums;
+}
+.timer-value.done { font-size: 44px; color: #34c759; }
+.timer-target { font-size: 13px; color: #c7c7cc; }
+.timer-track {
+  height: 6px;
+  background: #e5e5ea;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 18px 0 20px;
+}
+.timer-bar {
+  height: 100%;
+  width: 0;
+  background: #007aff;
+  border-radius: 3px;
+  transition: width 0.1s linear;
+}
+
 /* Stats screen */
 .stats-screen { display: none; }
 .stats-screen.active { display: block; }
@@ -745,6 +781,21 @@ body {
   </div>
 </div>
 
+<!-- Countdown Timer (초 단위 운동) -->
+<!-- 운동 중 실수로 닫히면 안 되므로 배경 탭으로는 닫히지 않는다. -->
+<div class="modal-overlay timer-overlay" id="timerOverlay">
+  <div class="timer-box">
+    <div class="timer-title" id="timerTitle"></div>
+    <div class="timer-value" id="timerValue">0</div>
+    <div class="timer-target" id="timerTarget"></div>
+    <div class="timer-track"><div class="timer-bar" id="timerBar"></div></div>
+    <div class="modal-buttons">
+      <button class="modal-btn cancel" onclick="cancelCountdown()">취소</button>
+      <button class="modal-btn confirm" onclick="stopCountdown()">중단</button>
+    </div>
+  </div>
+</div>
+
 <!-- History Modal -->
 <div class="modal-overlay" id="historyOverlay" onclick="closeHistoryModal(event)">
   <div class="modal history-modal">
@@ -798,7 +849,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 
 // ==================== Data ====================
-const APP_VERSION = 'v5.0';
+const APP_VERSION = 'v5.1';
 const STORAGE_ROUTINE = '3sw-routine-v2';
 const STORAGE_LOGS = '3sw-logs-v2';
 const STORAGE_ACTIVE_GROUP = '3sw-active-group';
@@ -1197,7 +1248,22 @@ function renderWorkout() {
   });
 }
 
+// 기록 저장 + 다시 그리기 + 진급 확인. 숫자 입력과 카운트다운이 공유한다.
+function recordSet(exerciseId, setIndex, value) {
+  updateLogEntry(activeGroupId, exerciseId, setIndex, value);
+  renderWorkout();
+  const entry = currentLog?.entries.find(e => e.exerciseId === exerciseId);
+  if (entry) checkAndShowProgression(entry);
+}
+
 function onSetTap(exerciseId, setIndex, target, currentActual, name, unit) {
+  // 초 단위 운동은 아직 기록 전이면 직접 재는 대신 카운트다운으로 측정한다.
+  // 이미 기록된 세트는 기존처럼 숫자 입력(수정/지우기)으로 연다.
+  if (unit === 'seconds' && currentActual === null) {
+    startCountdown(exerciseId, setIndex, target, name);
+    return;
+  }
+
   const unitLabel = unit === 'seconds' ? '초' : '회';
   const defaultVal = currentActual !== null ? currentActual : target;
   const onClear = currentActual !== null ? () => {
@@ -1209,15 +1275,90 @@ function onSetTap(exerciseId, setIndex, target, currentActual, name, unit) {
     `목표: ${target}${unitLabel}`,
     defaultVal,
     (value) => {
-      if (value !== null && value >= 0) {
-        updateLogEntry(activeGroupId, exerciseId, setIndex, value);
-        renderWorkout();
-        const entry = currentLog?.entries.find(e => e.exerciseId === exerciseId);
-        if (entry) checkAndShowProgression(entry);
-      }
+      if (value !== null && value >= 0) recordSet(exerciseId, setIndex, value);
     },
     onClear
   );
+}
+
+// ==================== Countdown ====================
+let timerState = null;
+let wakeLock = null;
+
+// 긴 플랭크 중 화면이 꺼지지 않도록. 미지원 브라우저에서는 조용히 넘어간다.
+async function acquireWakeLock() {
+  try {
+    if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+  } catch(e) { /* 지원 안 함 / 권한 없음 */ }
+}
+
+function releaseWakeLock() {
+  try { wakeLock?.release(); } catch(e) {}
+  wakeLock = null;
+}
+
+function startCountdown(exerciseId, setIndex, target, name) {
+  timerState = { exerciseId, setIndex, target, name, startedAt: Date.now(), intervalId: null, done: false };
+
+  document.getElementById('timerTitle').textContent = `${name} — ${setIndex+1}세트`;
+  document.getElementById('timerTarget').textContent = `목표 ${target}초`;
+  document.getElementById('timerValue').classList.remove('done');
+  document.getElementById('timerOverlay').classList.add('active');
+
+  tickCountdown();
+  timerState.intervalId = setInterval(tickCountdown, 100);
+  acquireWakeLock();
+}
+
+function tickCountdown() {
+  if (!timerState || timerState.done) return;
+
+  const { startedAt, target } = timerState;
+  const remain = remainingSeconds(startedAt, Date.now(), target);
+
+  document.getElementById('timerValue').textContent = Math.ceil(remain);
+  document.getElementById('timerBar').style.width = ((1 - remain / target) * 100) + '%';
+
+  if (remain <= 0) finishCountdown();
+}
+
+function finishCountdown() {
+  const { exerciseId, setIndex, target } = timerState;
+  timerState.done = true;
+  clearInterval(timerState.intervalId);
+
+  const value = document.getElementById('timerValue');
+  value.textContent = '완료!';
+  value.classList.add('done');
+  document.getElementById('timerBar').style.width = '100%';
+  try { navigator.vibrate?.(200); } catch(e) {}
+
+  // 완료 표시를 잠깐 보여준 뒤 닫는다.
+  setTimeout(() => {
+    closeCountdown();
+    recordSet(exerciseId, setIndex, target);
+  }, 900);
+}
+
+// 중단: 지금까지 버틴 시간을 기록한다.
+function stopCountdown() {
+  if (!timerState) return;
+  const { exerciseId, setIndex, target, startedAt } = timerState;
+  const elapsed = elapsedSeconds(startedAt, Date.now(), target);
+  closeCountdown();
+  if (elapsed > 0) recordSet(exerciseId, setIndex, elapsed);
+}
+
+// 취소: 아무것도 기록하지 않는다.
+function cancelCountdown() {
+  closeCountdown();
+}
+
+function closeCountdown() {
+  if (timerState?.intervalId) clearInterval(timerState.intervalId);
+  timerState = null;
+  releaseWakeLock();
+  document.getElementById('timerOverlay').classList.remove('active');
 }
 
 // ==================== Modal ====================
